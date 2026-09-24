@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Meal Recorder",
+        "description": "The username and password a client uses to record items, and the person items are filed under when they do not say.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "default_person": "Default person"
+        }
+      }
+    },
+    "error": {
+      "invalid_person": "The person name must hold letters or digits.",
+      "empty_password": "The password must not be empty."
+    },
+    "abort": {
+      "single_instance_allowed": "Meal Recorder is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Meal Recorder",
+        "description": "People so far: {people}.\n\nAdd a person to give them entities, pick up any files already stored for them, and add their dashboard view. Leave the password blank to keep the current one.",
+        "data": {
+          "add_person": "Add a person",
+          "password": "New password"
+        }
+      }
+    },
+    "error": {
+      "invalid_person": "The person name must hold letters or digits.",
+      "person_collision": "That name matches a person who already exists."
+    }
+  }
+}
