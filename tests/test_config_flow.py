@@ -4,6 +4,8 @@ import pytest
 
 pytest.importorskip("pytest_homeassistant_custom_component")
 
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
 from homeassistant import config_entries  # noqa: E402
 from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
 
@@ -15,11 +17,6 @@ from custom_components.meal_recorder.const import (  # noqa: E402
     CONF_USERNAME,
     DOMAIN,
 )
-
-
-@pytest.fixture(name="enable_custom_integrations", autouse=True)
-def enable_custom_integrations_fixture(enable_custom_integrations):
-    return enable_custom_integrations
 
 
 async def test_setup_stores_a_hash_not_the_password(hass):

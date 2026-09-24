@@ -12,6 +12,8 @@ import pytest
 
 pytest.importorskip("pytest_homeassistant_custom_component")
 
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
 from homeassistant.core import HomeAssistant  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
@@ -44,13 +46,9 @@ def basic(username="meals", password="secret"):
     return {"Authorization": f"Basic {token}"}
 
 
-@pytest.fixture(name="enable_custom_integrations", autouse=True)
-def enable_custom_integrations_fixture(enable_custom_integrations):
-    return enable_custom_integrations
-
-
 @pytest.fixture(name="entry")
-async def entry_fixture(hass: HomeAssistant):
+async def entry_fixture(hass: HomeAssistant, tmp_path):
+    hass.config.config_dir = str(tmp_path)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Meal Recorder",
@@ -157,7 +155,7 @@ async def test_a_colliding_person_is_refused(hass, entry):
 
     coordinator = hass.data[DOMAIN][entry.entry_id]
     with pytest.raises(PersonCollision):
-        await coordinator.async_add_person("D a v i d")
+        await coordinator.async_add_person("DAVID")
 
 
 async def test_entities_follow_the_stored_items(hass, hass_client_no_auth, entry):

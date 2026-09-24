@@ -58,7 +58,7 @@ class MealItemsView(HomeAssistantView):
                 "unauthorized",
                 headers={"WWW-Authenticate": _REALM},
             )
-        await process_success_login(request)
+        process_success_login(request)
 
         if request.content_length and request.content_length > MAX_BODY_BYTES:
             return self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too_large")

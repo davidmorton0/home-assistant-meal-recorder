@@ -15,6 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+try:  # The DNS resolver starts a thread the test plugin would report as leaked.
+    import pycares
+
+    pycares.Channel()
+except Exception:  # noqa: BLE001 - only a warm-up
+    pass
+
 if importlib.util.find_spec("homeassistant") is None:
     for name, path in (
         ("custom_components", ROOT / "custom_components"),
