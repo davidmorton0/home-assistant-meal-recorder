@@ -4,8 +4,6 @@ A Home Assistant custom integration that records meals sent from a client on
 the internet, stores them as CSV, and shows them on a Day and a Month
 dashboard.
 
-The design is in [docs/DESIGN.md](docs/DESIGN.md).
-
 ## What it does
 
 - Adds an endpoint to Home Assistant, protected by HTTP Basic auth, that
@@ -103,8 +101,8 @@ on the next read. The folder is under `config`, so backups include it.
 ## Development
 
 ```sh
-pip install -r requirements_test.txt
-pytest tests -q
+poetry install
+poetry run pytest tests -q
 ```
 
 The validation, storage, aggregation and hashing tests run without Home

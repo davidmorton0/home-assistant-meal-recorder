@@ -1,0 +1,13 @@
+[project]
+name = "meal-recorder"
+version = "0.1.0"
+description = "Home Assistant custom integration for recording meals"
+license = "MIT"
+requires-python = "==3.12.14"
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.test.dependencies]
+pytest = "8.3.4"
+pytest-homeassistant-custom-component = "0.13.205"
