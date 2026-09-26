@@ -2,6 +2,7 @@
 name = "meal-recorder"
 version = "0.1.0"
 description = "Home Assistant custom integration for recording meals"
+license = "MIT"
 requires-python = "==3.12.14"
 
 [tool.poetry]

@@ -158,6 +158,7 @@ async def test_a_colliding_person_is_refused(hass, entry):
         await coordinator.async_add_person("DAVID")
 
 
+@pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
 async def test_entities_follow_the_stored_items(hass, hass_client_no_auth, entry):
     client = await hass_client_no_auth()
     await client.post(URL, json={"items": [ITEM]}, headers=basic())
