@@ -289,3 +289,22 @@ async def test_the_card_script_is_served(hass, hass_client_no_auth, entry):
     response = await client.get("/meal_recorder/meal-recorder-card.js")
     assert response.status == HTTPStatus.OK
     assert "meal-recorder-card" in await response.text()
+
+
+
+async def test_every_entity_on_the_page_exists(hass, entry):
+    import re
+    from pathlib import Path
+
+    folder = Path(__file__).parents[1] / "custom_components" / "meal_recorder"
+    text = (folder / "meal-recorder-panel.js").read_text() + (folder / "meal-recorder-card.js").read_text()
+    entity_ids = set(re.findall(r"\b(?:select|button|sensor)\.meals_\w+", text))
+    assert len(entity_ids) == 8
+    for entity_id in entity_ids:
+        assert hass.states.get(entity_id) is not None, entity_id
+
+
+async def test_the_page_script_is_served(hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    response = await client.get("/meal_recorder/meal-recorder-panel.js")
+    assert response.status == HTTPStatus.OK

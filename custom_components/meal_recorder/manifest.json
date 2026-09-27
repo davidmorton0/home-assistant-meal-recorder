@@ -2,15 +2,15 @@
   "domain": "meal_recorder",
   "name": "Meal Recorder",
   "after_dependencies": [
-    "frontend"
+    "frontend",
+    "panel_custom"
   ],
   "codeowners": [
     "@davidmorton0"
   ],
   "config_flow": true,
   "dependencies": [
-    "http",
-    "lovelace"
+    "http"
   ],
   "documentation": "https://github.com/davidmorton0/home-assistant-meal-recorder",
   "integration_type": "service",
