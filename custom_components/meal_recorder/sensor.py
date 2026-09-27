@@ -206,6 +206,8 @@ class ViewDaySensor(ViewEntity, SensorEntity):
         summary = self._summary
         return {
             "person": self.coordinator.person_name(view.folder),
+            # The chart on the page builds this person's statistic ids from it.
+            "folder": view.folder,
             "date": view.day.isoformat(),
             "items": [
                 {

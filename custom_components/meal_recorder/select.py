@@ -23,6 +23,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             PersonSelect(coordinator, "person", "Meals person", "mdi:account"),
+            YearSelect(coordinator, "year", "Meals year", "mdi:calendar-blank"),
             MonthSelect(coordinator, "month", "Meals month", "mdi:calendar-month"),
             DaySelect(coordinator, "day", "Meals day", "mdi:calendar-today"),
         ]
@@ -50,20 +51,47 @@ class PersonSelect(ViewEntity, SelectEntity):
         await self.coordinator.async_set_view(folder=folder)
 
 
-class MonthSelect(ViewEntity, SelectEntity):
-    """The month shown, as YYYY-MM: every month from the first stored one to now."""
+class YearSelect(ViewEntity, SelectEntity):
+    """The year shown: every year from the first stored month to now."""
 
     @property
     def options(self) -> list[str]:
-        return [f"{year:04d}-{month:02d}" for year, month in self.coordinator.view_months]
+        years = {year for year, _ in self.coordinator.view_months}
+        return [str(year) for year in sorted(years, reverse=True)]
 
     @property
     def current_option(self) -> str:
-        return self.coordinator.view.day.strftime("%Y-%m")
+        return str(self.coordinator.view.day.year)
 
     async def async_select_option(self, option: str) -> None:
-        year, _, month = option.partition("-")
-        await self.coordinator.async_set_view_month(int(year), int(month))
+        await self.coordinator.async_set_view_month(
+            int(option), self.coordinator.view.day.month
+        )
+
+
+class MonthSelect(ViewEntity, SelectEntity):
+    """The month shown, by name, out of the months that year holds."""
+
+    @property
+    def options(self) -> list[str]:
+        year = self.coordinator.view.day.year
+        return [
+            calendar.month_name[month]
+            for stored_year, month in sorted(self.coordinator.view_months)
+            if stored_year == year
+        ]
+
+    @property
+    def current_option(self) -> str:
+        return calendar.month_name[self.coordinator.view.day.month]
+
+    async def async_select_option(self, option: str) -> None:
+        names = list(calendar.month_name)
+        if option not in names:
+            raise ServiceValidationError(f"{option} is not a month")
+        await self.coordinator.async_set_view_month(
+            self.coordinator.view.day.year, names.index(option)
+        )
 
 
 class DaySelect(ViewEntity, SelectEntity):

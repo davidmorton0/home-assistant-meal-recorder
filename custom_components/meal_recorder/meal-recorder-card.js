@@ -238,10 +238,14 @@ const STYLE = `
   .meal { margin-top: 12px; }
   .meal-head { display: flex; justify-content: space-between; font-weight: 500; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .none { padding: 6px 0; font-style: italic; }
-  .row { display: grid; grid-template-columns: 3.2em 1fr auto auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--divider-color); }
-  .row.confirm { grid-template-columns: 1fr auto; background: color-mix(in srgb, var(--error-color) 10%, transparent); padding: 6px 8px; }
+  /* Wraps onto a second line in a narrow card, rather than squeezing the name. */
+  .row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--divider-color); }
+  .row.confirm { justify-content: space-between; background: color-mix(in srgb, var(--error-color) 10%, transparent); padding: 6px 8px; }
+  .time { flex: 0 0 3.2em; }
   .name, .kcal { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
-  .kcal { text-align: right; white-space: nowrap; }
+  .name { flex: 1 1 9em; }
+  .kcal { flex: 0 1 auto; margin-left: auto; text-align: right; }
+  .macros { white-space: nowrap; }
   .portion, .macros { font-size: 0.85em; }
   .actions { display: flex; gap: 4px; }
   button { font: inherit; cursor: pointer; border: 1px solid var(--divider-color); background: none; color: var(--primary-text-color); border-radius: 6px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px; }

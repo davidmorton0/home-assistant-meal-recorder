@@ -61,7 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass,
                 frontend_url_path=PANEL_PATH,
                 webcomponent_name="meal-recorder-panel",
-                sidebar_title="Meals",
+                sidebar_title="Meal record",
                 sidebar_icon="mdi:food-apple",
                 module_url=PANEL_URL,
             )

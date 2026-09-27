@@ -68,3 +68,29 @@ def test_empty_month():
     summary = aggregate.month_summary([])
     assert summary["days_logged"] == 0
     assert summary["averages"]["kcal"] == 0.0
+
+
+def test_daily_series_runs_a_total_and_fills_empty_days():
+    records = [
+        record("2026-09-21T08:15", kcal=300.0),
+        record("2026-09-23T08:15", kcal=200.0),
+    ]
+    series = aggregate.daily_series(records, date(2026, 9, 24))
+    assert [day for day, _, _ in series] == [
+        date(2026, 9, 21),
+        date(2026, 9, 22),
+        date(2026, 9, 23),
+        date(2026, 9, 24),
+    ]
+    assert [totals["kcal"] for _, totals, _ in series] == [300.0, 0.0, 200.0, 0.0]
+    assert [running["kcal"] for _, _, running in series] == [300.0, 300.0, 500.0, 500.0]
+
+
+def test_daily_series_reaches_the_last_day_with_items():
+    records = [record("2026-09-25T08:15", kcal=300.0)]
+    series = aggregate.daily_series(records, date(2026, 9, 24))
+    assert [day for day, _, _ in series] == [date(2026, 9, 25)]
+
+
+def test_daily_series_without_records_is_empty():
+    assert aggregate.daily_series([], date(2026, 9, 24)) == []
