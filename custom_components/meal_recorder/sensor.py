@@ -17,8 +17,10 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from . import aggregate
 from .const import DOMAIN, NUTRIENTS, SIGNAL_DATA_UPDATED, SIGNAL_PERSON_ADDED
 from .coordinator import MealRecorderCoordinator
+from .entity import ViewEntity
 
 UNITS = {"kcal": "kcal", "protein": "g", "carbs": "g", "fat": "g", "mass": "g"}
 LABELS = {"kcal": "kcal", "protein": "protein", "carbs": "carbs", "fat": "fat"}
@@ -42,6 +44,8 @@ async def async_setup_entry(
         ]
         entities.extend(MealTodaySensor(coordinator, folder, field) for field in NUTRIENTS)
         async_add_entities(entities)
+
+    async_add_entities([ViewDaySensor(coordinator, "day", "Meals day", "mdi:food")])
 
     for folder in coordinator.folders:
         _add(folder)
@@ -179,3 +183,44 @@ class MealTodaySensor(MealSensorBase):
     def last_reset(self) -> datetime:
         """Today's totals start again at local midnight."""
         return dt_util.start_of_local_day()
+
+
+class ViewDaySensor(ViewEntity, SensorEntity):
+    """The day the dashboard shows: kcal as the state, every item in the attributes."""
+
+    _attr_native_unit_of_measurement = "kcal"
+    # Follows the pickers, so it is never recorded as history.
+    _unrecorded_attributes = frozenset({MATCH_ALL})
+
+    @property
+    def _summary(self) -> dict[str, Any]:
+        return aggregate.day_summary(self.coordinator.view_records, self.coordinator.view.day)
+
+    @property
+    def native_value(self) -> float:
+        return self._summary["totals"]["kcal"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        view = self.coordinator.view
+        summary = self._summary
+        return {
+            "person": self.coordinator.person_name(view.folder),
+            "date": view.day.isoformat(),
+            "items": [
+                {
+                    "id": record["id"],
+                    "date": record["created_at"].date().isoformat(),
+                    "time": record["created_at"].strftime("%H:%M"),
+                    "meal": record["meal"],
+                    "name": record["name"],
+                    "portion": record["portion"],
+                    **{field: round(float(record[field]), 1) for field in ["mass", *NUTRIENTS]},
+                }
+                for record in sorted(
+                    self.coordinator.view_records, key=lambda record: record["created_at"]
+                )
+            ],
+            "meal_totals": {meal: entry["totals"] for meal, entry in summary["meals"].items()},
+            "totals": summary["totals"],
+        }

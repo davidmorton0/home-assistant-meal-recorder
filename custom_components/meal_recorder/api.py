@@ -21,7 +21,7 @@ from .const import (
     DOMAIN,
     MAX_BODY_BYTES,
 )
-from .coordinator import MealRecorderCoordinator, UnknownPerson
+from .coordinator import DuplicateId, MealRecorderCoordinator, UnknownPerson
 from .items import TooManyItems, validate_batch
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,6 +91,11 @@ class MealItemsView(HomeAssistantView):
         except UnknownPerson as err:
             return self.json(
                 {"error": "unknown_person", "person": err.person},
+                HTTPStatus.CONFLICT,
+            )
+        except DuplicateId as err:
+            return self.json(
+                {"error": "duplicate_id", "ids": err.ids},
                 HTTPStatus.CONFLICT,
             )
         except OSError:

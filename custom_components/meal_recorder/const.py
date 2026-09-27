@@ -7,7 +7,6 @@ CONF_USERNAME = "username"
 CONF_PASSWORD_HASH = "password_hash"
 CONF_DEFAULT_PERSON = "default_person"
 CONF_PERSONS = "persons"
-CONF_DASHBOARD_VIEWS = "dashboard_views"
 
 # Storage
 STORAGE_DIR = "meal_recorder"
@@ -38,3 +37,4 @@ MAX_PERSON_LEN = 100
 # Signals
 SIGNAL_DATA_UPDATED = f"{DOMAIN}_data_updated"
 SIGNAL_PERSON_ADDED = f"{DOMAIN}_person_added"
+SIGNAL_VIEW_UPDATED = f"{DOMAIN}_view_updated"

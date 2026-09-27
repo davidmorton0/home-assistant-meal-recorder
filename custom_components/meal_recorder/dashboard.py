@@ -13,7 +13,6 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_DASHBOARD_VIEWS, NUTRIENTS
 from .coordinator import MealRecorderCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,7 +54,6 @@ async def async_setup_dashboard(
         data={
             **entry.data,
             DASHBOARD_CREATED: True,
-            CONF_DASHBOARD_VIEWS: sorted(coordinator.persons) if created else [],
         },
     )
 
@@ -114,108 +112,44 @@ async def _async_create_dashboard(hass: HomeAssistant, config: dict[str, Any]) -
 
 
 def build_dashboard(coordinator: MealRecorderCoordinator) -> dict[str, Any]:
-    """Build the dashboard config: one view per person."""
+    """Build the dashboard config: the pickers, the day and month buttons, the items."""
     return {
         "views": [
-            build_view(folder, person)
-            for folder, person in sorted(coordinator.persons.items())
+            {
+                "title": "Meals",
+                "path": "meals",
+                "cards": [
+                    {
+                        "type": "entities",
+                        "entities": ["select.meals_person", "select.meals_month", "select.meals_day"],
+                    },
+                    {
+                        "type": "horizontal-stack",
+                        "cards": [
+                            _press("button.meals_previous_month", "Month", "mdi:chevron-double-left"),
+                            _press("button.meals_previous_day", "Day", "mdi:chevron-left"),
+                            _press("button.meals_next_day", "Day", "mdi:chevron-right"),
+                            _press("button.meals_next_month", "Month", "mdi:chevron-double-right"),
+                        ],
+                    },
+                    {"type": "custom:meal-recorder-card", "entity": "sensor.meals_day"},
+                ],
+            }
         ]
     }
 
 
-def build_view(folder: str, person: str) -> dict[str, Any]:
-    """One person's view: the day, their meals, the chart and the month."""
-    return {"title": person, "path": folder or "person", "cards": _cards(folder, person)}
-
-
-async def async_add_person_view(
-    hass: HomeAssistant, entry: ConfigEntry, coordinator: MealRecorderCoordinator, folder: str
-) -> None:
-    """Append a view for a person added after the dashboard was created.
-
-    Views already made are never remade, so one deleted on purpose stays gone,
-    and nothing already on the dashboard is rewritten.
-    """
-    made: list[str] = list(entry.data.get(CONF_DASHBOARD_VIEWS, []))
-    if folder in made or not entry.data.get(DASHBOARD_CREATED):
-        return
-
-    view = build_view(folder, coordinator.person_name(folder))
-    try:
-        store = _dashboard_store(hass)
-        if store is None:
-            return
-        config = await store.async_load(False) or {"views": []}
-        config.setdefault("views", []).append(view)
-        await store.async_save(config)
-    except Exception:  # noqa: BLE001 - the Lovelace storage API is not stable
-        _LOGGER.exception("Could not add the %s view to the Meals dashboard", folder)
-        return
-
-    hass.config_entries.async_update_entry(
-        entry, data={**entry.data, CONF_DASHBOARD_VIEWS: [*made, folder]}
-    )
-
-
-def _cards(folder: str, person: str) -> list[dict[str, Any]]:
-    day = f"sensor.meals_{folder}_day"
-    month = f"sensor.meals_{folder}_month"
-    totals = [f"sensor.meals_{folder}_today_{field}" for field in NUTRIENTS]
-
-    return [
-        {
-            "type": "entities",
-            "title": f"{person} — day",
-            "entities": ["date.meals_day_shown", {"entity": day, "name": "Day total"}],
+def _press(entity: str, name: str, icon: str) -> dict[str, Any]:
+    """A button card that presses a button entity."""
+    return {
+        "type": "button",
+        "entity": entity,
+        "name": name,
+        "icon": icon,
+        "show_state": False,
+        "tap_action": {
+            "action": "perform-action",
+            "perform_action": "button.press",
+            "target": {"entity_id": entity},
         },
-        {"type": "markdown", "content": _day_markdown(day)},
-        {
-            "type": "statistics-graph",
-            "title": "Daily totals",
-            "entities": totals,
-            "days_to_show": 30,
-            "period": "day",
-            "stat_types": ["sum"],
-            "chart_type": "bar",
-        },
-        {"type": "markdown", "content": _month_markdown(month)},
-    ]
-
-
-def _day_markdown(day_entity: str) -> str:
-    return (
-        "{% set meals = state_attr('" + day_entity + "', 'meals') or {} %}\n"
-        "{% set totals = state_attr('" + day_entity + "', 'totals') or {} %}\n"
-        "{% for meal in ['breakfast', 'lunch', 'dinner', 'snack'] %}"
-        "{% set entry = meals.get(meal, {}) %}"
-        "{% set meal_totals = entry.get('totals', {}) %}\n"
-        "### {{ meal | capitalize }} — {{ meal_totals.get('kcal', 0) }} kcal\n"
-        "{% if entry.get('items') %}"
-        "| Time | Item | Portion | Mass | kcal | P | C | F |\n"
-        "|---|---|---|---|---|---|---|---|\n"
-        "{% for item in entry['items'] %}"
-        "| {{ item.time }} | {{ item.name }} | {{ item.portion }} | {{ item.mass }} g | "
-        "{{ item.kcal }} | {{ item.protein }} | {{ item.carbs }} | {{ item.fat }} |\n"
-        "{% endfor %}"
-        "{% else %}_Nothing recorded._\n{% endif %}\n"
-        "{% endfor %}\n"
-        "---\n"
-        "**Day total: {{ totals.get('kcal', 0) }} kcal** · "
-        "protein {{ totals.get('protein', 0) }} g · "
-        "carbs {{ totals.get('carbs', 0) }} g · "
-        "fat {{ totals.get('fat', 0) }} g\n"
-    )
-
-
-def _month_markdown(month_entity: str) -> str:
-    return (
-        "{% set totals = state_attr('" + month_entity + "', 'totals') or {} %}\n"
-        "{% set averages = state_attr('" + month_entity + "', 'averages') or {} %}\n"
-        "### Month\n"
-        "Days logged: {{ state_attr('" + month_entity + "', 'days_logged') or 0 }}\n\n"
-        "Total {{ totals.get('kcal', 0) }} kcal · "
-        "Average per logged day {{ averages.get('kcal', 0) }} kcal · "
-        "protein {{ averages.get('protein', 0) }} g · "
-        "carbs {{ averages.get('carbs', 0) }} g · "
-        "fat {{ averages.get('fat', 0) }} g\n"
-    )
+    }

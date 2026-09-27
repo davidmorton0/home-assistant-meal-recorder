@@ -11,7 +11,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .const import CSV_COLUMNS, NUTRIENTS
 
@@ -29,6 +29,7 @@ class CsvStore:
     def __init__(self, base_dir: str | os.PathLike[str]) -> None:
         self.base_dir = Path(base_dir)
         self._cache: dict[Path, tuple[float, int, list[dict[str, Any]]]] = {}
+        self._id_cache: dict[Path, tuple[float, int, set[str]]] = {}
 
     # Writing -------------------------------------------------------------
 
@@ -60,6 +61,72 @@ class CsvStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             self._cache.pop(path, None)
+            self._id_cache.pop(path, None)
+
+    def delete_item(self, folder: str, item_id: str) -> bool:
+        """Remove an item from a person's files. False if it is not there."""
+        path = self._find(folder, item_id)
+        if path is None:
+            return False
+        self._rewrite(path, lambda row: None if row.get("id") == item_id else row)
+        return True
+
+    def update_item(self, folder: str, item: dict[str, Any]) -> bool:
+        """Replace the stored item that has item["id"]. False if it is not there.
+
+        An item moved to another month is written to its new file before it is
+        taken out of the old one, so a failure part way leaves it twice, not lost.
+        """
+        path = self._find(folder, item["id"])
+        if path is None:
+            return False
+        created = item["created_at"]
+        if path == self.path_for(folder, created.year, created.month):
+            replacement = _row_from_item(item)
+            self._rewrite(
+                path, lambda row: replacement if row.get("id") == item["id"] else row
+            )
+        else:
+            self.append_items([{**item, "folder": folder}])
+            self._rewrite(path, lambda row: None if row.get("id") == item["id"] else row)
+        return True
+
+    def get_item(self, folder: str, item_id: str) -> dict[str, Any] | None:
+        """A person's stored item by id, or None."""
+        path = self._find(folder, item_id)
+        if path is None:
+            return None
+        month, _, year = path.stem.partition("_")
+        records = self.read_month(folder, int(year), int(month))
+        return next((record for record in records if record["id"] == item_id), None)
+
+    def _find(self, folder: str, item_id: str) -> Path | None:
+        for path in sorted((self.base_dir / folder).glob("*.csv")):
+            if item_id in self._ids_in(path):
+                return path
+        return None
+
+    def _rewrite(
+        self, path: Path, change: Callable[[dict[str, Any]], dict[str, Any] | None]
+    ) -> None:
+        """Rewrite a file row by row, through a temporary file, keeping unknown rows."""
+        with path.open("r", newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = reader.fieldnames or CSV_COLUMNS
+            rows = [row for row in map(change, reader) if row is not None]
+
+        temporary = path.with_suffix(".csv.tmp")
+        with temporary.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL, extrasaction="ignore"
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        self._cache.pop(path, None)
+        self._id_cache.pop(path, None)
 
     # Reading -------------------------------------------------------------
 
@@ -87,6 +154,36 @@ class CsvStore:
         records.sort(key=lambda record: record["created_at"])
         self._cache[path] = (stat.st_mtime, stat.st_size, records)
         return records
+
+    def ids(self) -> set[str]:
+        """Every item id stored, for every person and month."""
+        found: set[str] = set()
+        for path in self.base_dir.glob("*/*.csv"):
+            found |= self._ids_in(path)
+        return found
+
+    def _ids_in(self, path: Path) -> set[str]:
+        """The ids in one file, malformed rows included."""
+        try:
+            stat = path.stat()
+        except OSError:
+            return set()
+        cached = self._id_cache.get(path)
+        if cached and cached[0] == stat.st_mtime and cached[1] == stat.st_size:
+            return cached[2]
+        with path.open("r", newline="", encoding="utf-8") as handle:
+            ids = {row["id"] for row in csv.DictReader(handle) if row.get("id")}
+        self._id_cache[path] = (stat.st_mtime, stat.st_size, ids)
+        return ids
+
+    def months(self, folder: str) -> list[tuple[int, int]]:
+        """The (year, month) of each file a person has."""
+        found = []
+        for path in (self.base_dir / folder).glob("*.csv"):
+            month, _, year = path.stem.partition("_")
+            if month.isdigit() and year.isdigit() and 1 <= int(month) <= 12:
+                found.append((int(year), int(month)))
+        return sorted(found)
 
     def folders(self) -> list[str]:
         """Return the person folders that exist."""
