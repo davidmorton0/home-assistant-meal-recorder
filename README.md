@@ -11,7 +11,8 @@ dashboard.
 - Stores them as CSV: a folder per person, a file per month
   (`config/meal_recorder/<person>/MM_YYYY.csv`).
 - Publishes each person's day and month figures as entities.
-- Adds a "Meals" dashboard built from standard cards.
+- Adds a "Meals" dashboard: person, month and day pickers, buttons to step a
+  day or a month, and a card listing the day's items with add, edit and delete.
 
 ## Installing
 
@@ -22,12 +23,11 @@ dashboard.
    the person items are filed under when a request does not name one.
 3. Add the other people in the integration's **Configure** dialog. Adding a
    person creates their entities, picks up any CSV files already stored for
-   them, and adds their tab to the dashboard.
+   them, and adds them to the dashboard's person picker.
 
-The **Meals** dashboard is created during that first setup, and after that the
-only thing written to it is a new person's tab. A tab is made once and never
-remade, so your edits — and any tab you delete — stand, and a later version's
-dashboard improvements do not reach an existing install. If a
+The **Meals** dashboard is created during that first setup and is not rewritten
+after that, so your edits stand, and a later version's dashboard improvements do
+not reach an existing install. If a
 dashboard already exists at `/meal-recorder`, it is left exactly as it is and
 the generated configuration is written to `config/meal_recorder/dashboard.json`
 instead, for you to paste into a dashboard's raw configuration editor.
@@ -37,7 +37,7 @@ instead, for you to paste into a dashboard's raw configuration editor.
 ```sh
 curl -u meals:secret \
   -H 'Content-Type: application/json' \
-  -d '{"items":[{"created_at":"2026-09-24T08:15:00+01:00","person":"David","name":"Porridge with milk","meal":"breakfast","portion":"1 bowl","mass":250,"kcal":310,"protein":10.5,"carbs":54.0,"fat":6.2}]}' \
+  -d '{"items":[{"id":"0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10","created_at":"2026-09-24T08:15:00+01:00","person":"David","name":"Porridge with milk","meal":"breakfast","portion":"1 bowl","mass":250,"kcal":310,"protein":10.5,"carbs":54.0,"fat":6.2}]}' \
   https://ha.example.com/api/meal_recorder/items
 ```
 
@@ -45,6 +45,7 @@ A bare JSON list is accepted in place of `{"items": [...]}`.
 
 | Field | Rule |
 |---|---|
+| `id` | A UUID the client makes, required. An id that is already stored, or repeated in the batch, is refused, so resending a batch does not store it twice. |
 | `created_at` | ISO 8601. Without an offset it is read in Home Assistant's time zone. |
 | `person` | Optional. Omitted means the default person. The person must have been added in the integration. |
 | `name` | Short text, required. |
@@ -60,9 +61,19 @@ reply says which items were wrong.
 | 201 | Stored. The reply gives the count and the identifiers. |
 | 400 | The payload or an item is invalid. |
 | 401 | Wrong or missing credentials. |
-| 409 | The person has not been added in the integration. |
+| 409 | `duplicate_id`: an item's id is already stored (the reply lists them). `unknown_person`: the person has not been added in the integration. |
 | 413 | The request or the batch is too large. |
 | 500 | Writing failed; details are in the Home Assistant log. |
+
+## Editing items
+
+The dashboard shows one person's day, picked with the person, month and day
+pickers or the buttons that step a day or a month. Its item list is a card that
+comes with the integration (`custom:meal-recorder-card`): each item has an edit
+and a delete button, delete asks first, and **Add item** opens a form with the
+date and time, so past days can be filled in. The card calls the
+`meal_recorder.add_item`, `update_item` and `delete_item` actions, which check
+items with the same rules as the endpoint.
 
 ## Security
 
@@ -83,9 +94,12 @@ Per person:
 | Entity | Holds |
 |---|---|
 | `sensor.meals_<person>_day` | The selected day's kcal, with the items grouped by meal and the totals in its attributes. |
-| `sensor.meals_<person>_today_kcal` and the three macros | Today's totals. Home Assistant keeps these as long-term statistics, and the month chart is drawn from them — so the chart starts at installation, and days that only exist in the CSV files are not on it. |
+| `sensor.meals_<person>_today_kcal` and the three macros | Today's totals, kept by Home Assistant as long-term statistics. |
 | `sensor.meals_<person>_month` | The selected month's kcal, with totals, averages and days logged in its attributes. |
-| `date.meals_day_shown` | The day the Day view shows. One control, shared by everyone. |
+| `date.meals_day_shown` | The day the per-person Day and Month entities describe. |
+| `select.meals_person`, `select.meals_month`, `select.meals_day` | The person and day the dashboard shows. Shared by everyone, kept across restarts. |
+| `button.meals_previous_day`, `_next_day`, `_previous_month`, `_next_month` | Step the day shown. |
+| `sensor.meals_day` | The day shown: its kcal, with every item and the totals in its attributes. |
 
 The day and month entities follow the date control, so their attributes are not
 recorded. If you want to keep their state changes out of your database as well,

@@ -34,5 +34,109 @@
       "invalid_person": "The person name must hold letters or digits.",
       "person_collision": "That name matches a person who already exists."
     }
+  },
+  "services": {
+    "add_item": {
+      "name": "Add item",
+      "description": "Adds an item with a new id.",
+      "fields": {
+        "person": {
+          "name": "Person",
+          "description": "Whose item it is. Omitted means the person the dashboard shows."
+        },
+        "created_at": {
+          "name": "Eaten at",
+          "description": "When the item was eaten. Without an offset it is read in Home Assistant's time zone."
+        },
+        "name": {
+          "name": "Name",
+          "description": "What was eaten."
+        },
+        "meal": {
+          "name": "Meal",
+          "description": "breakfast, lunch, dinner or snack."
+        },
+        "portion": {
+          "name": "Portion",
+          "description": "Free text, may be empty."
+        },
+        "mass": {
+          "name": "Mass",
+          "description": "Grams."
+        },
+        "kcal": {
+          "name": "kcal",
+          "description": "Kilocalories."
+        },
+        "protein": {
+          "name": "Protein",
+          "description": "Grams."
+        },
+        "carbs": {
+          "name": "Carbs",
+          "description": "Grams."
+        },
+        "fat": {
+          "name": "Fat",
+          "description": "Grams."
+        }
+      }
+    },
+    "update_item": {
+      "name": "Update item",
+      "description": "Replaces an item's details. Its id and person stay the same.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "The item's id."
+        },
+        "created_at": {
+          "name": "Eaten at",
+          "description": "When the item was eaten. Without an offset it is read in Home Assistant's time zone."
+        },
+        "name": {
+          "name": "Name",
+          "description": "What was eaten."
+        },
+        "meal": {
+          "name": "Meal",
+          "description": "breakfast, lunch, dinner or snack."
+        },
+        "portion": {
+          "name": "Portion",
+          "description": "Free text, may be empty."
+        },
+        "mass": {
+          "name": "Mass",
+          "description": "Grams."
+        },
+        "kcal": {
+          "name": "kcal",
+          "description": "Kilocalories."
+        },
+        "protein": {
+          "name": "Protein",
+          "description": "Grams."
+        },
+        "carbs": {
+          "name": "Carbs",
+          "description": "Grams."
+        },
+        "fat": {
+          "name": "Fat",
+          "description": "Grams."
+        }
+      }
+    },
+    "delete_item": {
+      "name": "Delete item",
+      "description": "Deletes an item.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "The item's id."
+        }
+      }
+    }
   }
 }

@@ -4,19 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime
-from typing import Any
+import calendar
+from datetime import date, datetime, timedelta
+from typing import Any, NamedTuple
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from . import aggregate
 from .const import (
+    CONF_DEFAULT_PERSON,
     CONF_PERSONS,
+    DOMAIN,
     SIGNAL_DATA_UPDATED,
     SIGNAL_PERSON_ADDED,
+    SIGNAL_VIEW_UPDATED,
     STORAGE_DIR,
 )
 from .items import normalise_person
@@ -33,6 +38,22 @@ class UnknownPerson(Exception):
         self.person = person
 
 
+class DuplicateId(Exception):
+    """A batch holds ids that are already stored."""
+
+    def __init__(self, ids: list[str]) -> None:
+        super().__init__(f"already stored: {', '.join(ids)}")
+        self.ids = ids
+
+
+class ItemNotFound(Exception):
+    """No stored item has the id asked for."""
+
+    def __init__(self, item_id: str) -> None:
+        super().__init__(f"no item has id {item_id!r}")
+        self.item_id = item_id
+
+
 class PersonCollision(Exception):
     """Two person names normalise onto the same folder."""
 
@@ -41,6 +62,13 @@ class PersonCollision(Exception):
         self.person = person
         self.existing = existing
         self.folder = folder
+
+
+class View(NamedTuple):
+    """What the dashboard shows: a person's day."""
+
+    folder: str
+    day: date
 
 
 class MealRecorderCoordinator:
@@ -52,6 +80,11 @@ class MealRecorderCoordinator:
         self.store = CsvStore(hass.config.path(STORAGE_DIR))
         self.selected_date: date = dt_util.now().date()
         self.data: dict[str, dict[str, Any]] = {}
+        # The dashboard's person, month and day, kept across restarts.
+        self.view = View(normalise_person(entry.data.get(CONF_DEFAULT_PERSON, "")), dt_util.now().date())
+        self.view_records: list[dict[str, Any]] = []
+        self.view_months: list[tuple[int, int]] = []
+        self._view_store: Store = Store(hass, 1, f"{DOMAIN}.view")
         self._announced: set[str] = set()
         self._refreshing = False
         # Batches arriving at once are written one after another.
@@ -116,20 +149,124 @@ class MealRecorderCoordinator:
     # Writing -------------------------------------------------------------
 
     async def async_add_items(self, items: list[dict[str, Any]]) -> list[str]:
-        """Append items to their files. Raises UnknownPerson before writing."""
+        """Append items to their files.
+
+        Raises UnknownPerson or DuplicateId before writing anything.
+        """
         for item in items:
             item["folder"] = self.folder_for(item["person"])
 
         async with self._write_lock:
+            stored = await self.hass.async_add_executor_job(self.store.ids)
+            duplicates = [item["id"] for item in items if item["id"] in stored]
+            if duplicates:
+                raise DuplicateId(duplicates)
             await self.hass.async_add_executor_job(self.store.append_items, items)
         await self.async_refresh()
         return [item["id"] for item in items]
+
+    async def async_find_item(self, item_id: str) -> tuple[str, dict[str, Any]]:
+        """The folder and the stored record of an item. Raises ItemNotFound."""
+        for folder in self.folders:
+            record = await self.hass.async_add_executor_job(
+                self.store.get_item, folder, item_id
+            )
+            if record is not None:
+                return folder, record
+        raise ItemNotFound(item_id)
+
+    async def async_update_item(self, folder: str, item: dict[str, Any]) -> None:
+        """Replace a person's stored item with the same id. Raises ItemNotFound."""
+        async with self._write_lock:
+            found = await self.hass.async_add_executor_job(
+                self.store.update_item, folder, item
+            )
+        if not found:
+            raise ItemNotFound(item["id"])
+        await self.async_refresh()
+
+    async def async_delete_item(self, folder: str, item_id: str) -> None:
+        """Remove a person's stored item. Raises ItemNotFound."""
+        async with self._write_lock:
+            found = await self.hass.async_add_executor_job(
+                self.store.delete_item, folder, item_id
+            )
+        if not found:
+            raise ItemNotFound(item_id)
+        await self.async_refresh()
+
+    # The dashboard's view ------------------------------------------------
+
+    async def async_load_view(self) -> None:
+        """Restore the person, month and day picked before a restart."""
+        saved = await self._view_store.async_load()
+        if saved:
+            try:
+                self.view = View(saved["folder"], date.fromisoformat(saved["day"]))
+            except (KeyError, TypeError, ValueError):
+                _LOGGER.warning("Ignoring the saved dashboard selection %s", saved)
+
+    async def async_set_view(self, folder: str | None = None, day: date | None = None) -> None:
+        """Pick the person or the day shown, then load that day's items."""
+        if folder is not None:
+            if folder not in self.persons:
+                raise UnknownPerson(folder)
+            self.view = View(folder, self.view.day)
+        if day is not None:
+            self.view = View(self.view.folder, day)
+        self._view_store.async_delay_save(
+            lambda: {"folder": self.view.folder, "day": self.view.day.isoformat()}, 1
+        )
+        await self._async_read_view()
+
+    async def async_set_view_month(self, year: int, month: int) -> None:
+        """Pick a month, keeping the day of the month where it can."""
+        last = calendar.monthrange(year, month)[1]
+        await self.async_set_view(day=date(year, month, min(self.view.day.day, last)))
+
+    async def async_shift_view(self, days: int = 0, months: int = 0) -> None:
+        """Move the day shown by days, or by whole months."""
+        if months:
+            index = self.view.day.year * 12 + self.view.day.month - 1 + months
+            await self.async_set_view_month(index // 12, index % 12 + 1)
+        else:
+            await self.async_set_view(day=self.view.day + timedelta(days=days))
+
+    async def _async_read_view(self) -> None:
+        folders = self.folders
+        if self.view.folder not in folders and folders:
+            self.view = View(folders[0], self.view.day)
+        self.view_records, self.view_months = await self.hass.async_add_executor_job(
+            self._read_view, self.view
+        )
+        async_dispatcher_send(self.hass, f"{SIGNAL_VIEW_UPDATED}_{self.entry.entry_id}")
+
+    def _read_view(self, view: View) -> tuple[list[dict[str, Any]], list[tuple[int, int]]]:
+        day = view.day
+        records = [
+            record
+            for record in self.store.read_month(view.folder, day.year, day.month)
+            if record["created_at"].date() == day
+        ]
+        # Every month from the first stored one to now, so past months with
+        # nothing in them yet can be picked and filled in.
+        stored = self.store.months(view.folder)
+        today = dt_util.now().date()
+        first = min([*stored, (today.year, today.month), (day.year, day.month)])
+        last = max([*stored, (today.year, today.month), (day.year, day.month)])
+        months = []
+        index = first[0] * 12 + first[1] - 1
+        while index <= last[0] * 12 + last[1] - 1:
+            months.append((index // 12, index % 12 + 1))
+            index += 1
+        return records, months[::-1]
 
     # Reading -------------------------------------------------------------
 
     async def async_set_date(self, value: date) -> None:
         self.selected_date = value
         await self.async_refresh()
+
 
     async def async_refresh(self, _now: datetime | None = None) -> None:
         """Re-read the files and republish.
@@ -152,6 +289,7 @@ class MealRecorderCoordinator:
         )
         self._announce(folders)
         async_dispatcher_send(self.hass, f"{SIGNAL_DATA_UPDATED}_{self.entry.entry_id}")
+        await self._async_read_view()
 
     def _read_all(self, folders: list[str], selected: date) -> dict[str, dict[str, Any]]:
         today = dt_util.now().date()

@@ -32,6 +32,15 @@ def normalise_person(person: str) -> str:
     return folder.strip("_")
 
 
+def _parse_id(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("must be a UUID string")
+    try:
+        return str(uuid.UUID(value.strip()))
+    except ValueError as err:
+        raise ValueError("not a valid UUID") from err
+
+
 def _parse_created_at(value: Any, tz: tzinfo) -> datetime:
     if not isinstance(value, str):
         raise ValueError("must be an ISO 8601 string")
@@ -76,7 +85,7 @@ def validate_batch(
     """Validate a payload.
 
     Returns (items, errors). A batch is all or nothing: if errors is not empty
-    the caller stores nothing.
+    the caller stores nothing. Ids already stored are checked by the caller.
     """
     if isinstance(payload, list):
         raw_items = payload
@@ -90,13 +99,22 @@ def validate_batch(
 
     items: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+    seen: dict[str, int] = {}
 
     for index, raw in enumerate(raw_items):
         if not isinstance(raw, dict):
             errors.append({"index": index, "field": None, "message": "item must be an object"})
             continue
 
-        item: dict[str, Any] = {"id": str(uuid.uuid4()), "received_at": received_at}
+        item: dict[str, Any] = {"received_at": received_at}
+
+        try:
+            item["id"] = _parse_id(raw.get("id"))
+            if item["id"] in seen:
+                raise ValueError(f"repeats the id of item {seen[item['id']]}")
+            seen[item["id"]] = index
+        except ValueError as err:
+            errors.append({"index": index, "field": "id", "message": str(err)})
 
         try:
             item["created_at"] = _parse_created_at(raw.get("created_at"), tz)

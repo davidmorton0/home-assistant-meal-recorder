@@ -1,0 +1,66 @@
+add_item:
+  fields:
+    person:
+      selector:
+        text:
+    created_at:
+      required: true
+      selector:
+        datetime:
+    name:
+      required: true
+      selector:
+        text:
+    meal:
+      required: true
+      selector:
+        select:
+          options: [breakfast, lunch, dinner, snack]
+    portion:
+      selector:
+        text:
+    mass: &number
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100000
+          step: 0.1
+          mode: box
+    kcal: *number
+    protein: *number
+    carbs: *number
+    fat: *number
+update_item:
+  fields:
+    id:
+      required: true
+      selector:
+        text:
+    created_at:
+      required: true
+      selector:
+        datetime:
+    name:
+      required: true
+      selector:
+        text:
+    meal:
+      required: true
+      selector:
+        select:
+          options: [breakfast, lunch, dinner, snack]
+    portion:
+      selector:
+        text:
+    mass: *number
+    kcal: *number
+    protein: *number
+    carbs: *number
+    fat: *number
+delete_item:
+  fields:
+    id:
+      required: true
+      selector:
+        text:
