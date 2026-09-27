@@ -7,10 +7,10 @@ meal.json:
 {
   "meal": "dinner",                          # breakfast | lunch | dinner | snack
   "created_at": "2026-09-24T18:30:00+01:00", # optional, defaults to now
-  "person": "David",                         # optional, defaults to HA's default person
+  "person": "David",                         # optional, defaults to "person" in config.json
   "items": [
     {"name": "...", "portion": "...", "mass": 212, "kcal": 460,
-     "protein": 8, "carbs": 55, "fat": 21}   # "id" is added by this script
+     "protein": 8, "carbohydrate": 55, "fat": 21}   # "id" is added by this script
 
   ]
 }
@@ -28,11 +28,11 @@ from zoneinfo import ZoneInfo
 CONFIG = Path(__file__).resolve().parent.parent / "config.json"
 ENDPOINT = "/api/meal_recorder/items"
 MEALS = ["breakfast", "lunch", "dinner", "snack"]
-NUMBERS = ["mass", "kcal", "protein", "carbs", "fat"]
+NUMBERS = ["mass", "kcal", "protein", "carbohydrate", "fat"]
 LIMITS = {"name": 200, "portion": 100, "person": 100}
 
 
-def build_items(meal):
+def build_items(meal, own_name=""):
     """Turn the meal file into the integration's item list, checking the same rules it does."""
     problems = []
     meal_type = str(meal.get("meal", "")).strip().lower()
@@ -45,8 +45,10 @@ def build_items(meal):
     except ValueError:
         problems.append("created_at is not a valid ISO 8601 timestamp")
 
-    person = (meal.get("person") or "").strip()
-    if len(person) > LIMITS["person"]:
+    person = (meal.get("person") or own_name or "").strip()
+    if not person or person == "YOUR-NAME":
+        problems.append("no person: set person in the meal file or in config.json")
+    elif len(person) > LIMITS["person"]:
         problems.append(f"person must be at most {LIMITS['person']} characters")
 
     raw_items = meal.get("items") or []
@@ -63,10 +65,8 @@ def build_items(meal):
             problems.append(f"item {i}: name longer than {LIMITS['name']} characters")
         if len(portion) > LIMITS["portion"]:
             problems.append(f"item {i}: portion longer than {LIMITS['portion']} characters")
-        item = {"id": raw.get("id"), "created_at": created_at, "name": name,
-                "meal": meal_type, "portion": portion}
-        if person:
-            item["person"] = person
+        item = {"id": raw.get("id"), "created_at": created_at, "person": person,
+                "name": name, "meal": meal_type, "portion": portion}
         for field in NUMBERS:
             value = raw.get(field)
             if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -97,7 +97,8 @@ def main():
             if isinstance(raw, dict) and not raw.get("id"):
                 raw["id"] = str(uuid.uuid4())
         meal_file.write_text(json.dumps(meal, indent=2))
-    items, problems = build_items(meal)
+    cfg = json.loads(CONFIG.read_text())
+    items, problems = build_items(meal, cfg.get("person", ""))
     if problems:
         print("ERROR: not sent, the meal file has problems:")
         for p in problems:
@@ -111,7 +112,6 @@ def main():
         print(f"DRY RUN: {len(items)} items, {total} kcal, not sent")
         return
 
-    cfg = json.loads(CONFIG.read_text())
     base = cfg.get("base_url", "").rstrip("/")
     user, pw = cfg.get("username", ""), cfg.get("password", "")
     if not base or "YOUR-DOMAIN" in base or not user or not pw or "CHANGE-ME" in pw:

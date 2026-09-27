@@ -5,7 +5,6 @@ DOMAIN = "meal_recorder"
 # Config entry data
 CONF_USERNAME = "username"
 CONF_PASSWORD_HASH = "password_hash"
-CONF_DEFAULT_PERSON = "default_person"
 CONF_PERSONS = "persons"
 
 # Storage
@@ -20,12 +19,12 @@ CSV_COLUMNS = [
     "mass",
     "kcal",
     "protein",
-    "carbs",
+    "carbohydrate",
     "fat",
 ]
 
 MEALS = ["breakfast", "lunch", "dinner", "snack"]
-NUTRIENTS = ["kcal", "protein", "carbs", "fat"]
+NUTRIENTS = ["kcal", "protein", "carbohydrate", "fat"]
 
 # Ingest caps
 MAX_BODY_BYTES = 1024 * 1024

@@ -15,7 +15,6 @@ from homeassistant.util import dt as dt_util
 
 from .auth import verify_password, verify_username
 from .const import (
-    CONF_DEFAULT_PERSON,
     CONF_PASSWORD_HASH,
     CONF_USERNAME,
     DOMAIN,
@@ -72,11 +71,9 @@ class MealItemsView(HomeAssistantView):
         except ValueError:
             return self._error(HTTPStatus.BAD_REQUEST, "invalid_json")
 
-        entry_data = coordinator.entry.data
         try:
             items, errors = validate_batch(
                 payload,
-                entry_data[CONF_DEFAULT_PERSON],
                 dt_util.DEFAULT_TIME_ZONE,
                 dt_util.now(),
             )

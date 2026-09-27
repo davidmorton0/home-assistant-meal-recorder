@@ -18,7 +18,7 @@ def record(when, meal="breakfast", kcal=100.0, name="Item"):
         "mass": 100.0,
         "kcal": kcal,
         "protein": 10.0,
-        "carbs": 20.0,
+        "carbohydrate": 20.0,
         "fat": 5.0,
     }
 

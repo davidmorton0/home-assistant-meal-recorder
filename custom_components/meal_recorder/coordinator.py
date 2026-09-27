@@ -16,7 +16,6 @@ from homeassistant.util import dt as dt_util
 
 from . import aggregate
 from .const import (
-    CONF_DEFAULT_PERSON,
     CONF_PERSONS,
     DOMAIN,
     SIGNAL_DATA_UPDATED,
@@ -80,8 +79,9 @@ class MealRecorderCoordinator:
         self.store = CsvStore(hass.config.path(STORAGE_DIR))
         self.selected_date: date = dt_util.now().date()
         self.data: dict[str, dict[str, Any]] = {}
-        # The dashboard's person, month and day, kept across restarts.
-        self.view = View(normalise_person(entry.data.get(CONF_DEFAULT_PERSON, "")), dt_util.now().date())
+        # The dashboard's person, month and day, kept across restarts. Until
+        # one is picked, the first person in the list is shown.
+        self.view = View("", dt_util.now().date())
         self.view_records: list[dict[str, Any]] = []
         self.view_months: list[tuple[int, int]] = []
         self._view_store: Store = Store(hass, 1, f"{DOMAIN}.view")

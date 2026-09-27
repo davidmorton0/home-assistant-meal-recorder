@@ -78,7 +78,6 @@ def _parse_text(value: Any, maximum: int, allow_empty: bool) -> str:
 
 def validate_batch(
     payload: Any,
-    default_person: str,
     tz: tzinfo,
     received_at: datetime,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -121,11 +120,8 @@ def validate_batch(
         except ValueError as err:
             errors.append({"index": index, "field": "created_at", "message": str(err)})
 
-        person = raw.get("person")
-        if person is None or (isinstance(person, str) and not person.strip()):
-            person = default_person
         try:
-            person_name = _parse_text(person, MAX_PERSON_LEN, allow_empty=False)
+            person_name = _parse_text(raw.get("person"), MAX_PERSON_LEN, allow_empty=False)
             if not normalise_person(person_name):
                 raise ValueError("must hold letters or digits")
             item["person"] = person_name

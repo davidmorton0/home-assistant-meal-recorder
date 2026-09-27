@@ -24,7 +24,7 @@ GOOD = {
     "mass": 250,
     "kcal": 310,
     "protein": 10.5,
-    "carbs": 54.0,
+    "carbohydrate": 54.0,
     "fat": 6.2,
 }
 
@@ -35,7 +35,7 @@ def good(**changes):
 
 
 def validate(payload):
-    return validate_batch(payload, "Default", TZ, NOW)
+    return validate_batch(payload, TZ, NOW)
 
 
 def test_accepts_a_batch():
@@ -62,9 +62,13 @@ def test_unknown_meal_is_rejected():
     assert errors[0]["field"] == "meal"
 
 
-def test_missing_person_uses_the_default():
-    stored, _ = validate([{k: v for k, v in good().items() if k != "person"}])
-    assert stored[0]["person"] == "Default"
+@pytest.mark.parametrize("person", [None, "", "  "])
+def test_missing_person_is_rejected(person):
+    item = {k: v for k, v in good().items() if k != "person"}
+    if person is not None:
+        item["person"] = person
+    _, errors = validate([item])
+    assert errors[0]["field"] == "person"
 
 
 def test_naive_time_is_read_in_the_given_zone():
@@ -77,7 +81,7 @@ def test_zulu_time_is_accepted():
     assert stored[0]["created_at"].utcoffset() == timedelta(0)
 
 
-@pytest.mark.parametrize("field", ["mass", "kcal", "protein", "carbs", "fat"])
+@pytest.mark.parametrize("field", ["mass", "kcal", "protein", "carbohydrate", "fat"])
 def test_negative_numbers_are_rejected(field):
     _, errors = validate([good(**{field: -1})])
     assert errors[0]["field"] == field

@@ -3,11 +3,11 @@
     "step": {
       "user": {
         "title": "Meal Recorder",
-        "description": "The username and password a client uses to record items, and the person items are filed under when they do not say.",
+        "description": "The username and password a client uses to record items, and the first person. Add more people later in Configure.",
         "data": {
           "username": "Username",
           "password": "Password",
-          "default_person": "Default person"
+          "person": "Person"
         }
       }
     },
@@ -42,7 +42,7 @@
       "fields": {
         "person": {
           "name": "Person",
-          "description": "Whose item it is. Omitted means the person the dashboard shows."
+          "description": "Whose item it is."
         },
         "created_at": {
           "name": "Eaten at",
@@ -72,8 +72,8 @@
           "name": "Protein",
           "description": "Grams."
         },
-        "carbs": {
-          "name": "Carbs",
+        "carbohydrate": {
+          "name": "Carbohydrate",
           "description": "Grams."
         },
         "fat": {
@@ -118,8 +118,8 @@
           "name": "Protein",
           "description": "Grams."
         },
-        "carbs": {
-          "name": "Carbs",
+        "carbohydrate": {
+          "name": "Carbohydrate",
           "description": "Grams."
         },
         "fat": {
