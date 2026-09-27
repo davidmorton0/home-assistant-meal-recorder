@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-
 from pathlib import Path
 
-from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components import panel_custom
+from homeassistant.components.frontend import add_extra_js_url, async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -16,7 +16,6 @@ from homeassistant.helpers.event import async_track_time_change
 from .api import MealItemsView
 from .const import DOMAIN
 from .coordinator import MealRecorderCoordinator
-from .dashboard import async_setup_dashboard
 from .services import async_register_services, async_remove_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,6 +23,8 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.DATE, Platform.SELECT, Platform.SENSOR]
 
 CARD_URL = "/meal_recorder/meal-recorder-card.js"
+PANEL_URL = "/meal_recorder/meal-recorder-panel.js"
+PANEL_PATH = "meal-recorder"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -39,15 +40,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not hass.data.get(f"{DOMAIN}_view_registered"):
         hass.http.register_view(MealItemsView(hass))
-        # The dashboard card, loaded on every page so any dashboard can use it.
+        folder = Path(__file__).parent
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(CARD_URL, str(Path(__file__).parent / "meal-recorder-card.js"), False)]
+            [
+                StaticPathConfig(CARD_URL, str(folder / "meal-recorder-card.js"), False),
+                StaticPathConfig(PANEL_URL, str(folder / "meal-recorder-panel.js"), False),
+            ]
         )
+        # The item card, loaded on every page so any dashboard can use it too.
         if "frontend" in hass.config.components:
             add_extra_js_url(hass, CARD_URL)
         hass.data[f"{DOMAIN}_view_registered"] = True
 
     async_register_services(hass)
+
+    # The Meals page in the sidebar.
+    if "frontend" in hass.config.components:
+        try:
+            await panel_custom.async_register_panel(
+                hass,
+                frontend_url_path=PANEL_PATH,
+                webcomponent_name="meal-recorder-panel",
+                sidebar_title="Meals",
+                sidebar_icon="mdi:food-apple",
+                module_url=PANEL_URL,
+            )
+        except ValueError:
+            _LOGGER.warning(
+                "The Meals page was not added, because something else is already at "
+                "/%s. Delete that dashboard in Settings > Dashboards and restart",
+                PANEL_PATH,
+            )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -57,7 +80,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     entry.async_on_unload(entry.add_update_listener(_async_entry_updated))
 
-    await async_setup_dashboard(hass, entry, coordinator)
     return True
 
 
@@ -67,6 +89,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         async_remove_services(hass)
+        async_remove_panel(hass, PANEL_PATH, warn_if_unknown=False)
     return unloaded
 
 

@@ -11,7 +11,7 @@ dashboard.
 - Stores them as CSV: a folder per person, a file per month
   (`config/meal_recorder/<person>/MM_YYYY.csv`).
 - Publishes each person's day and month figures as entities.
-- Adds a "Meals" dashboard: person, month and day pickers, buttons to step a
+- Adds a "Meals" page to the sidebar: person, month and day pickers, buttons to step a
   day or a month, and a card listing the day's items with add, edit and delete.
 
 ## Installing
@@ -25,12 +25,10 @@ dashboard.
    person creates their entities, picks up any CSV files already stored for
    them, and adds them to the dashboard's person picker.
 
-The **Meals** dashboard is created during that first setup and is not rewritten
-after that, so your edits stand, and a later version's dashboard improvements do
-not reach an existing install. If a
-dashboard already exists at `/meal-recorder`, it is left exactly as it is and
-the generated configuration is written to `config/meal_recorder/dashboard.json`
-instead, for you to paste into a dashboard's raw configuration editor.
+The integration adds a **Meals** page to the sidebar. It is part of the
+integration, so it changes when the integration is updated and cannot be edited
+in the UI; to lay things out your own way, build a dashboard from the entities
+below and the item card (`custom:meal-recorder-card`).
 
 ## Recording items
 
@@ -67,9 +65,9 @@ reply says which items were wrong.
 
 ## Editing items
 
-The dashboard shows one person's day, picked with the person, month and day
+The Meals page shows one person's day, picked with the person, month and day
 pickers or the buttons that step a day or a month. Its item list is a card that
-comes with the integration (`custom:meal-recorder-card`): each item has an edit
+comes with the integration (`custom:meal-recorder-card`), usable on any dashboard: each item has an edit
 and a delete button, delete asks first, and **Add item** opens a form with the
 date and time, so past days can be filled in. The card calls the
 `meal_recorder.add_item`, `update_item` and `delete_item` actions, which check
