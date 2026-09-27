@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 
 from .const import MEALS, NUTRIENTS
@@ -88,3 +88,37 @@ def month_summary(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "averages": averages,
         "days_logged": days_logged,
     }
+
+
+def daily_series(
+    records: Iterable[dict[str, Any]], end: date
+) -> list[tuple[date, dict[str, float], dict[str, float]]]:
+    """Every day from the first with items to end: its totals and the running totals.
+
+    Days with nothing recorded are included as zero, so a day whose items were
+    all deleted still has a row and the running totals after it stay true.
+    """
+    per_day: dict[date, dict[str, float]] = {}
+    for record in records:
+        day = per_day.setdefault(record["created_at"].date(), _empty_totals())
+        _add(day, record)
+    if not per_day:
+        return []
+
+    running = _empty_totals()
+    series: list[tuple[date, dict[str, float], dict[str, float]]] = []
+    day = min(per_day)
+    last = max(end, max(per_day))
+    while day <= last:
+        totals = per_day.get(day, _empty_totals())
+        for field in _FIELDS:
+            running[field] += totals[field]
+        series.append(
+            (
+                day,
+                {field: round(value, 1) for field, value in totals.items()},
+                {field: round(value, 1) for field, value in running.items()},
+            )
+        )
+        day += timedelta(days=1)
+    return series

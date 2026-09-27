@@ -14,7 +14,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import aggregate
+from . import aggregate, stats
 from .const import (
     CONF_PERSONS,
     DOMAIN,
@@ -290,6 +290,16 @@ class MealRecorderCoordinator:
         self._announce(folders)
         async_dispatcher_send(self.hass, f"{SIGNAL_DATA_UPDATED}_{self.entry.entry_id}")
         await self._async_read_view()
+        await self.async_update_statistics()
+
+    async def async_update_statistics(self) -> None:
+        """Rewrite every person's daily totals, which is what the graphs draw."""
+        today = dt_util.now().date()
+        for folder in self.folders:
+            series = await self.hass.async_add_executor_job(
+                stats.read_series, self.store, folder, today
+            )
+            stats.write(self.hass, folder, self.person_name(folder), series)
 
     def _read_all(self, folders: list[str], selected: date) -> dict[str, dict[str, Any]]:
         today = dt_util.now().date()

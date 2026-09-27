@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("pytest_homeassistant_custom_component")
 
-pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+pytestmark = pytest.mark.usefixtures("recorder_mock", "enable_custom_integrations")
 
 from homeassistant import config_entries  # noqa: E402
 from homeassistant.data_entry_flow import FlowResultType  # noqa: E402

@@ -94,13 +94,95 @@ Per person:
 | `sensor.meals_<person>_today_kcal` and the three macros | Today's totals, kept by Home Assistant as long-term statistics. |
 | `sensor.meals_<person>_month` | The selected month's kcal, with totals, averages and days logged in its attributes. |
 | `date.meals_day_shown` | The day the per-person Day and Month entities describe. |
-| `select.meals_person`, `select.meals_month`, `select.meals_day` | The person and day the dashboard shows. Shared by everyone, kept across restarts. |
-| `button.meals_previous_day`, `_next_day`, `_previous_month`, `_next_month` | Step the day shown. |
+| `select.meals_person`, `select.meals_year`, `select.meals_month`, `select.meals_day` | The person and day the dashboard shows. Shared by everyone, kept across restarts. |
+| `button.meals_previous_day`, `_next_day`, `_previous_week`, `_next_week`, `_previous_month`, `_next_month` | Step the day shown. |
 | `sensor.meals_day` | The day shown: its kcal, with every item and the totals in its attributes. |
 
 The day and month entities follow the date control, so their attributes are not
 recorded. If you want to keep their state changes out of your database as well,
 exclude them in your `recorder:` configuration.
+
+## Graphs
+
+Each person's daily totals are also written to Home Assistant's long-term
+statistics, from the CSV files rather than the sensors, so every recorded day
+is there — including days filled in or corrected later. They are rewritten on
+every change, at midnight, and at startup.
+
+| Statistic | Unit |
+|---|---|
+| `meal_recorder:<person>_kcal` | kcal |
+| `meal_recorder:<person>_protein`, `_carbohydrate`, `_fat` | g |
+
+`<person>` is the folder name: lower case, spaces as underscores. They are
+statistics, not entities, so only a statistics-graph card can draw them.
+
+A dashboard to paste into the raw configuration editor (dashboard → pencil →
+three dots → **Raw configuration editor**), replacing `david` with the folder
+name:
+
+```yaml
+title: Meals
+views:
+  - title: Week
+    path: week
+    cards:
+      - type: energy-date-selection
+      - type: statistics-graph
+        title: kcal per day
+        entities:
+          - meal_recorder:david_kcal
+        period: day
+        stat_types:
+          - change
+        chart_type: bar
+        energy_date_selection: true
+      - type: statistics-graph
+        title: Macros per day (g)
+        entities:
+          - meal_recorder:david_protein
+          - meal_recorder:david_carbohydrate
+          - meal_recorder:david_fat
+        period: day
+        stat_types:
+          - change
+        chart_type: bar
+        energy_date_selection: true
+  - title: Last 30 days
+    path: month
+    cards:
+      - type: statistics-graph
+        title: kcal per day
+        entities:
+          - meal_recorder:david_kcal
+        period: day
+        days_to_show: 30
+        stat_types:
+          - change
+        chart_type: bar
+      - type: statistics-graph
+        title: Macros per day (g)
+        entities:
+          - meal_recorder:david_protein
+          - meal_recorder:david_carbohydrate
+          - meal_recorder:david_fat
+        period: day
+        days_to_show: 30
+        stat_types:
+          - change
+        chart_type: bar
+```
+
+On the **Week** view, choose Week on the date card and step back with its
+arrows. The **Last 30 days** view is fixed and needs no date card.
+
+Watch out for these:
+
+- `energy_date_selection: true` with no date card on the view shows today only.
+- `days_to_show` is ignored once `energy_date_selection` is on.
+- `change` and `state` both give a day's own amount; `sum` is the running total.
+- The Energy dashboard does not have to be set up for the date card to work.
+- A graph names its statistics, so each person needs their own cards.
 
 ## The data
 

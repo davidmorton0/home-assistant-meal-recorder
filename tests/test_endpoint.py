@@ -13,7 +13,7 @@ import pytest
 
 pytest.importorskip("pytest_homeassistant_custom_component")
 
-pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+pytestmark = pytest.mark.usefixtures("recorder_mock", "enable_custom_integrations")
 
 from homeassistant.core import HomeAssistant  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
@@ -198,7 +198,8 @@ async def call(hass, domain, service, **data):
 @pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
 async def test_the_pickers_start_on_today_for_the_first_person(hass, entry):
     assert hass.states.get("select.meals_person").state == "David"
-    assert hass.states.get("select.meals_month").state == "2026-09"
+    assert hass.states.get("select.meals_year").state == "2026"
+    assert hass.states.get("select.meals_month").state == "September"
     day = hass.states.get("select.meals_day")
     assert day.state == "24"
     assert day.attributes["options"][-1] == "30"
@@ -220,25 +221,38 @@ async def test_the_day_sensor_holds_the_days_items(hass, hass_client_no_auth, en
 
 
 @pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
-async def test_the_buttons_move_by_a_day_and_a_month(hass, entry):
+async def test_the_buttons_move_by_a_day_a_week_and_a_month(hass, entry):
     async def press(name):
         await call(hass, "button", "press", entity_id=f"button.meals_{name}")
         return hass.states.get("select.meals_month").state, hass.states.get("select.meals_day").state
 
-    assert await press("next_month") == ("2026-10", "24")
-    assert await press("previous_day") == ("2026-10", "23")
+    assert await press("next_month") == ("October", "24")
+    assert await press("previous_day") == ("October", "23")
     await call(hass, "select", "select_option", entity_id="select.meals_day", option="31")
-    assert await press("previous_month") == ("2026-09", "30")
-    assert await press("next_day") == ("2026-10", "1")
+    assert await press("previous_month") == ("September", "30")
+    assert await press("next_day") == ("October", "1")
+    assert await press("next_week") == ("October", "8")
+    assert await press("previous_week") == ("October", "1")
+    assert await press("previous_week") == ("September", "24")
 
 
 @pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
-async def test_the_month_picker_lists_every_month_since_the_first_file(hass, hass_client_no_auth, entry):
+async def test_the_pickers_list_every_month_since_the_first_file(hass, hass_client_no_auth, entry):
     client = await hass_client_no_auth()
-    await client.post(URL, json=[item(created_at="2026-06-02T08:15:00+01:00")], headers=basic())
+    await client.post(URL, json=[item(created_at="2025-11-02T08:15:00+00:00")], headers=basic())
     await hass.async_block_till_done()
-    options = hass.states.get("select.meals_month").attributes["options"]
-    assert options == ["2026-09", "2026-08", "2026-07", "2026-06"]
+
+    assert hass.states.get("select.meals_year").attributes["options"] == ["2026", "2025"]
+    months = hass.states.get("select.meals_month").attributes["options"]
+    assert months == ["January", "February", "March", "April", "May", "June",
+                      "July", "August", "September"]
+
+    # The year keeps the month, and the month shown is always listed.
+    await call(hass, "select", "select_option", entity_id="select.meals_year", option="2025")
+    assert hass.states.get("select.meals_month").state == "September"
+    assert hass.states.get("select.meals_month").attributes["options"] == [
+        "September", "October", "November", "December"
+    ]
 
 
 @pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
@@ -301,7 +315,7 @@ async def test_every_entity_on_the_page_exists(hass, entry):
     folder = Path(__file__).parents[1] / "custom_components" / "meal_recorder"
     text = (folder / "meal-recorder-panel.js").read_text() + (folder / "meal-recorder-card.js").read_text()
     entity_ids = set(re.findall(r"\b(?:select|button|sensor)\.meals_\w+", text))
-    assert len(entity_ids) == 8
+    assert len(entity_ids) == 11
     for entity_id in entity_ids:
         assert hass.states.get(entity_id) is not None, entity_id
 

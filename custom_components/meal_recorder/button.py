@@ -20,8 +20,10 @@ async def async_setup_entry(
     async_add_entities(
         [
             ShiftButton(coordinator, "previous_month", "Meals previous month", "mdi:chevron-double-left", months=-1),
+            ShiftButton(coordinator, "previous_week", "Meals previous week", "mdi:calendar-arrow-left", days=-7),
             ShiftButton(coordinator, "previous_day", "Meals previous day", "mdi:chevron-left", days=-1),
             ShiftButton(coordinator, "next_day", "Meals next day", "mdi:chevron-right", days=1),
+            ShiftButton(coordinator, "next_week", "Meals next week", "mdi:calendar-arrow-right", days=7),
             ShiftButton(coordinator, "next_month", "Meals next month", "mdi:chevron-double-right", months=1),
         ]
     )
