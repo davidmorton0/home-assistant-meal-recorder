@@ -19,8 +19,7 @@ dashboard.
 1. In HACS, add this repository as a custom repository with the category
    **Integration**, install **Meal Recorder**, and restart Home Assistant.
 2. Go to **Settings → Devices & services → Add integration → Meal Recorder**.
-   Set the username and password the client will use, and the default person —
-   the person items are filed under when a request does not name one.
+   Set the username and password the client will use, and the first person.
 3. Add the other people in the integration's **Configure** dialog. Adding a
    person creates their entities, picks up any CSV files already stored for
    them, and adds them to the dashboard's person picker.
@@ -35,7 +34,7 @@ below and the item card (`custom:meal-recorder-card`).
 ```sh
 curl -u meals:secret \
   -H 'Content-Type: application/json' \
-  -d '{"items":[{"id":"0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10","created_at":"2026-09-24T08:15:00+01:00","person":"David","name":"Porridge with milk","meal":"breakfast","portion":"1 bowl","mass":250,"kcal":310,"protein":10.5,"carbs":54.0,"fat":6.2}]}' \
+  -d '{"items":[{"id":"0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10","created_at":"2026-09-24T08:15:00+01:00","person":"David","name":"Porridge with milk","meal":"breakfast","portion":"1 bowl","mass":250,"kcal":310,"protein":10.5,"carbohydrate":54.0,"fat":6.2}]}' \
   https://ha.example.com/api/meal_recorder/items
 ```
 
@@ -45,11 +44,11 @@ A bare JSON list is accepted in place of `{"items": [...]}`.
 |---|---|
 | `id` | A UUID the client makes, required. An id that is already stored, or repeated in the batch, is refused, so resending a batch does not store it twice. |
 | `created_at` | ISO 8601. Without an offset it is read in Home Assistant's time zone. |
-| `person` | Optional. Omitted means the default person. The person must have been added in the integration. |
+| `person` | Required. The person must have been added in the integration. |
 | `name` | Short text, required. |
 | `meal` | `breakfast`, `lunch`, `dinner` or `snack`. |
 | `portion` | Short free text, may be empty. |
-| `mass`, `kcal`, `protein`, `carbs`, `fat` | Numbers, not negative. Masses in grams. |
+| `mass`, `kcal`, `protein`, `carbohydrate`, `fat` | Numbers, not negative. Masses in grams. |
 
 A batch is all or nothing: if any item is invalid, nothing is stored and the
 reply says which items were wrong.

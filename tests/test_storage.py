@@ -21,7 +21,7 @@ def item(when, name="Porridge", meal="breakfast", folder="david", portion="1 bow
         "mass": 250.0,
         "kcal": kcal,
         "protein": 10.5,
-        "carbs": 54.0,
+        "carbohydrate": 54.0,
         "fat": 6.2,
         "folder": folder,
     }

@@ -1,5 +1,6 @@
 {
   "base_url": "https://YOUR-DOMAIN",
   "username": "YOUR-USERNAME",
-  "password": "CHANGE-ME"
+  "password": "CHANGE-ME",
+  "person": "YOUR-NAME"
 }

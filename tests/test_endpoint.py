@@ -20,7 +20,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.meal_recorder.auth import hash_password  # noqa: E402
 from custom_components.meal_recorder.const import (  # noqa: E402
-    CONF_DEFAULT_PERSON,
     CONF_PASSWORD_HASH,
     CONF_PERSONS,
     CONF_USERNAME,
@@ -29,13 +28,14 @@ from custom_components.meal_recorder.const import (  # noqa: E402
 
 ITEM = {
     "created_at": "2026-09-24T08:15:00+01:00",
+    "person": "David",
     "name": "Porridge with milk",
     "meal": "breakfast",
     "portion": "1 bowl",
     "mass": 250,
     "kcal": 310,
     "protein": 10.5,
-    "carbs": 54.0,
+    "carbohydrate": 54.0,
     "fat": 6.2,
 }
 
@@ -61,7 +61,6 @@ async def entry_fixture(hass: HomeAssistant, tmp_path):
         data={
             CONF_USERNAME: "meals",
             CONF_PASSWORD_HASH: hash_password("secret"),
-            CONF_DEFAULT_PERSON: "David",
             CONF_PERSONS: {"david": "David"},
         },
     )
@@ -197,7 +196,7 @@ async def call(hass, domain, service, **data):
 
 
 @pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
-async def test_the_pickers_start_on_today_for_the_default_person(hass, entry):
+async def test_the_pickers_start_on_today_for_the_first_person(hass, entry):
     assert hass.states.get("select.meals_person").state == "David"
     assert hass.states.get("select.meals_month").state == "2026-09"
     day = hass.states.get("select.meals_day")
@@ -265,6 +264,7 @@ async def test_the_services_add_update_and_delete(hass, entry):
     [record] = coordinator.store.read_month("david", 2026, 9)
     assert record["created_at"].date().isoformat() == "2026-09-20"
 
+    del fields["person"]
     await call(hass, DOMAIN, "update_item", id=record["id"], **{**fields, "kcal": 400}, created_at="2026-08-31T13:00")
     assert coordinator.store.read_month("david", 2026, 9) == []
     [moved] = coordinator.store.read_month("david", 2026, 8)
@@ -280,6 +280,8 @@ async def test_the_services_refuse_bad_input(hass, entry):
     fields = {k: v for k, v in ITEM.items() if k != "created_at"}
     with pytest.raises(ServiceValidationError, match="meal"):
         await call(hass, DOMAIN, "add_item", **{**fields, "meal": "brunch"}, created_at="2026-09-20T13:00")
+    with pytest.raises(ServiceValidationError, match="person"):
+        await call(hass, DOMAIN, "add_item", **{**fields, "person": " "}, created_at="2026-09-20T13:00")
     with pytest.raises(ServiceValidationError, match="no item"):
         await call(hass, DOMAIN, "delete_item", id="0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10")
 

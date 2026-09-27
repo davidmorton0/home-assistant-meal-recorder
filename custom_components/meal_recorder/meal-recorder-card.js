@@ -9,7 +9,7 @@ const NUMBERS = [
   ["mass", "Mass (g)"],
   ["kcal", "kcal"],
   ["protein", "Protein (g)"],
-  ["carbs", "Carbs (g)"],
+  ["carbohydrate", "Carb (g)"],
   ["fat", "Fat (g)"],
 ];
 
@@ -50,7 +50,7 @@ class MealRecorderCard extends HTMLElement {
     const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     this._form = {
       id: null,
-      values: { date: this._state.attributes.date, time, meal: "snack", name: "", portion: "", mass: "", kcal: "", protein: "", carbs: "", fat: "" },
+      values: { date: this._state.attributes.date, time, meal: "snack", name: "", portion: "", mass: "", kcal: "", protein: "", carbohydrate: "", fat: "" },
     };
     this._confirm = null;
     this._render();
@@ -80,6 +80,7 @@ class MealRecorderCard extends HTMLElement {
       return;
     }
     if (this._form.id) data.id = this._form.id;
+    else data.person = this._state.attributes.person;
     await this._call(this._form.id ? "update_item" : "add_item", data, () => {
       this._form = null;
     });
@@ -151,7 +152,7 @@ class MealRecorderCard extends HTMLElement {
         ${sections}
         <div class="total">
           <strong>Day total ${totals.kcal ?? 0} kcal</strong>
-          <span>protein ${totals.protein ?? 0} g · carbs ${totals.carbs ?? 0} g · fat ${totals.fat ?? 0} g</span>
+          <span>protein ${totals.protein ?? 0}g · carb ${totals.carbohydrate ?? 0}g · fat ${totals.fat ?? 0}g</span>
         </div>
       </ha-card>`;
     this._bind();
@@ -173,7 +174,7 @@ class MealRecorderCard extends HTMLElement {
       <div class="row">
         <span class="time">${escape(item.time)}</span>
         <span class="name">${escape(item.name)}${item.portion ? `<span class="portion">${escape(item.portion)} · ${item.mass} g</span>` : `<span class="portion">${item.mass} g</span>`}</span>
-        <span class="kcal">${item.kcal} kcal<span class="macros">P ${item.protein} · C ${item.carbs} · F ${item.fat}</span></span>
+        <span class="kcal">${item.kcal} kcal<span class="macros">protein ${item.protein}g · carb ${item.carbohydrate}g · fat ${item.fat}g</span></span>
         <span class="actions">
           <button class="icon" title="Edit" data-action="edit" data-id="${escape(item.id)}" ${this._form ? "disabled" : ""}><ha-icon icon="mdi:pencil"></ha-icon></button>
           <button class="icon" title="Delete" data-action="delete" data-id="${escape(item.id)}" ${this._form ? "disabled" : ""}><ha-icon icon="mdi:delete"></ha-icon></button>

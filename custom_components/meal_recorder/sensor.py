@@ -22,8 +22,8 @@ from .const import DOMAIN, NUTRIENTS, SIGNAL_DATA_UPDATED, SIGNAL_PERSON_ADDED
 from .coordinator import MealRecorderCoordinator
 from .entity import ViewEntity
 
-UNITS = {"kcal": "kcal", "protein": "g", "carbs": "g", "fat": "g", "mass": "g"}
-LABELS = {"kcal": "kcal", "protein": "protein", "carbs": "carbs", "fat": "fat"}
+UNITS = {"kcal": "kcal", "protein": "g", "carbohydrate": "g", "fat": "g", "mass": "g"}
+LABELS = {"kcal": "kcal", "protein": "protein", "carbohydrate": "carbohydrate", "fat": "fat"}
 
 
 async def async_setup_entry(

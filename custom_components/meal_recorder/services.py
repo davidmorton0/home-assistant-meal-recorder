@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_DEFAULT_PERSON, DOMAIN, NUTRIENTS
+from .const import DOMAIN, NUTRIENTS
 from .coordinator import DuplicateId, ItemNotFound, MealRecorderCoordinator, UnknownPerson
 from .items import validate_batch
 
@@ -25,7 +25,7 @@ _FIELDS = {
     vol.Optional("portion", default=""): str,
     **{vol.Required(field): vol.Coerce(float) for field in ["mass", *NUTRIENTS]},
 }
-ADD_SCHEMA = vol.Schema({vol.Optional("person"): str, **_FIELDS})
+ADD_SCHEMA = vol.Schema({vol.Required("person"): str, **_FIELDS})
 UPDATE_SCHEMA = vol.Schema({vol.Required("id"): str, **_FIELDS})
 DELETE_SCHEMA = vol.Schema({vol.Required("id"): str})
 
@@ -51,11 +51,10 @@ def _coordinator(call: ServiceCall) -> MealRecorderCoordinator:
     return coordinator
 
 
-def _validated(coordinator: MealRecorderCoordinator, raw: dict[str, Any]) -> dict[str, Any]:
+def _validated(raw: dict[str, Any]) -> dict[str, Any]:
     """Check an item with the same rules as the endpoint."""
     items, errors = validate_batch(
         [raw],
-        coordinator.entry.data[CONF_DEFAULT_PERSON],
         dt_util.get_default_time_zone(),
         dt_util.now(),
     )
@@ -67,10 +66,9 @@ def _validated(coordinator: MealRecorderCoordinator, raw: dict[str, Any]) -> dic
 
 
 async def _add(call: ServiceCall) -> None:
-    """Add an item. Without a person, it goes to the person the dashboard shows."""
+    """Add an item."""
     coordinator = _coordinator(call)
-    person = call.data.get("person") or coordinator.person_name(coordinator.view.folder)
-    item = _validated(coordinator, {**call.data, "id": str(uuid.uuid4()), "person": person})
+    item = _validated({**call.data, "id": str(uuid.uuid4())})
     try:
         await coordinator.async_add_items([item])
     except (UnknownPerson, DuplicateId) as err:
@@ -82,9 +80,7 @@ async def _update(call: ServiceCall) -> None:
     coordinator = _coordinator(call)
     try:
         folder, record = await coordinator.async_find_item(call.data["id"])
-        item = _validated(
-            coordinator, {**call.data, "person": coordinator.person_name(folder)}
-        )
+        item = _validated({**call.data, "person": coordinator.person_name(folder)})
         item["received_at"] = record["received_at"]
         await coordinator.async_update_item(folder, item)
     except ItemNotFound as err:

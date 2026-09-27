@@ -1,6 +1,7 @@
 add_item:
   fields:
     person:
+      required: true
       selector:
         text:
     created_at:
@@ -29,7 +30,7 @@ add_item:
           mode: box
     kcal: *number
     protein: *number
-    carbs: *number
+    carbohydrate: *number
     fat: *number
 update_item:
   fields:
@@ -56,7 +57,7 @@ update_item:
     mass: *number
     kcal: *number
     protein: *number
-    carbs: *number
+    carbohydrate: *number
     fat: *number
 delete_item:
   fields:

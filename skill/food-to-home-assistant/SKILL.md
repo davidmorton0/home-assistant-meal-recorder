@@ -1,6 +1,6 @@
 ---
 name: food-to-home-assistant
-description: Analyse a photo of a meal (identify each food, estimate portion, calories, protein, carbs, fat) and send the food list plus the analysis to the Meal Recorder integration in the user's Home Assistant as a food diary entry. Use this skill whenever the user shares a photo of food, a plate, a meal or a snack, or asks "how many calories", "log this meal", "track this", or "send to Home Assistant", even if they don't mention Home Assistant explicitly.
+description: Analyse a photo of a meal (identify each food, estimate portion, calories, protein, carbohydrate, fat) and send the food list plus the analysis to the Meal Recorder integration in the user's Home Assistant as a food diary entry. Use this skill whenever the user shares a photo of food, a plate, a meal or a snack, or asks "how many calories", "log this meal", "track this", or "send to Home Assistant", even if they don't mention Home Assistant explicitly.
 ---
 
 # Food photo → Home Assistant
@@ -44,24 +44,24 @@ Once confirmed, write a meal file and run the send script:
 {
   "meal": "dinner",
   "items": [
-    {"name": "Tesco vegetable quarter pounder", "portion": "2 burgers", "mass": 212, "kcal": 460, "protein": 8, "carbs": 55, "fat": 21},
-    {"name": "Jacket potato with margarine", "portion": "1 medium-large", "mass": 260, "kcal": 290, "protein": 6, "carbs": 50, "fat": 8}
+    {"name": "Tesco vegetable quarter pounder", "portion": "2 burgers", "mass": 212, "kcal": 460, "protein": 8, "carbohydrate": 55, "fat": 21},
+    {"name": "Jacket potato with margarine", "portion": "1 medium-large", "mass": 260, "kcal": 290, "protein": 6, "carbohydrate": 50, "fat": 8}
   ]
 }
 ```
 
 - `meal` is one of breakfast, lunch, dinner, snack. Infer it from the time of day or what the user said; ask only if it's genuinely unclear.
 - `mass` is the portion weight in grams and is required for every item, so always estimate it.
-- Nutrient numbers: `kcal`, and `protein`, `carbs`, `fat` in grams. Numbers only, never text.
+- Nutrient numbers: `kcal`, and `protein`, `carbohydrate`, `fat` in grams. Numbers only, never text.
 - `name` up to 200 characters, `portion` up to 100. Put brand and key swaps in the name (e.g. "Vegan cauliflower cheese (soya milk)"), because there is no notes field.
 - `created_at` (optional): an ISO 8601 time with offset, e.g. `2026-09-24T13:00:00+01:00`. Omit it when the user is logging a meal as they eat it, and the script uses the current time. Set it when they say when they ate (e.g. "this was lunch yesterday").
-- `person` (optional): only if the user says the meal is someone else's. Omitted means Home Assistant's default person.
+- `person` (optional): only if the user says the meal is someone else's. Omitted means the `person` in `config.json`, the user's own name. Every item is sent with a person; Home Assistant refuses items without one.
 
 ```bash
 python /path/to/skill/scripts/send_to_ha.py meal.json
 ```
 
-The script gives each item an id and saves it into the meal file before sending. `--dry-run` checks the file and prints what would be sent without sending. The script reads the Home Assistant address, username and password from `config.json` in the skill folder.
+The script gives each item an id and saves it into the meal file before sending. `--dry-run` checks the file and prints what would be sent without sending. The script reads the Home Assistant address, username, password and the user's name (`person`) from `config.json` in the skill folder.
 
 A batch is all or nothing: if any item is rejected, nothing is stored.
 
@@ -76,7 +76,7 @@ Report what the script printed, plainly. By cause:
 - **400:** the details say which item and field; fix it and send again (nothing was stored).
 - **"could not connect":** nothing was stored; check the address and that Home Assistant is up.
 - **"did not reply in time":** the meal may have been stored. Sending the same meal file again is safe: the script saved an id for each item in it, and Home Assistant refuses ids it already has (409 `duplicate_id`, meaning it was stored the first time). Never write a new meal file for a resend, because new ids would store it twice.
-- **config.json placeholders:** ask the user for their Home Assistant address and the integration's username and password.
+- **config.json placeholders:** ask the user for their Home Assistant address, the integration's username and password, and their name as added in the integration.
 
 Still show the user the analysis even if sending fails, so the work isn't lost.
 

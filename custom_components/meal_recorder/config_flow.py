@@ -12,7 +12,6 @@ from homeassistant.data_entry_flow import FlowResult
 from .auth import hash_password
 from .coordinator import PersonCollision
 from .const import (
-    CONF_DEFAULT_PERSON,
     CONF_PASSWORD_HASH,
     CONF_PERSONS,
     CONF_USERNAME,
@@ -24,13 +23,13 @@ SETUP_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required("password"): str,
-        vol.Required(CONF_DEFAULT_PERSON): str,
+        vol.Required("person"): str,
     }
 )
 
 
 class MealRecorderConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Ask for the ingest credential and the default person."""
+    """Ask for the ingest credential and the first person."""
 
     VERSION = 1
 
@@ -40,9 +39,9 @@ class MealRecorderConfigFlow(ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            person = user_input[CONF_DEFAULT_PERSON].strip()
+            person = user_input["person"].strip()
             if not normalise_person(person):
-                errors[CONF_DEFAULT_PERSON] = "invalid_person"
+                errors["person"] = "invalid_person"
             elif not user_input["password"]:
                 errors["password"] = "empty_password"
             else:
@@ -54,7 +53,6 @@ class MealRecorderConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={
                         CONF_USERNAME: user_input[CONF_USERNAME].strip(),
                         CONF_PASSWORD_HASH: password_hash,
-                        CONF_DEFAULT_PERSON: person,
                         CONF_PERSONS: {normalise_person(person): person},
                     },
                 )
