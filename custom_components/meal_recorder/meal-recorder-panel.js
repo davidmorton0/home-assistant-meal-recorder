@@ -50,8 +50,20 @@ const addDays = (date, days) => {
 };
 
 class MealRecorderPanel extends HTMLElement {
+  // Each time the page is opened it shows today.
+  connectedCallback() {
+    this._openOnToday = true;
+    if (this._hass) this._showToday();
+  }
+
+  _showToday() {
+    this._openOnToday = false;
+    this._hass.callService("button", "press", { entity_id: "button.meals_today" });
+  }
+
   set hass(hass) {
     this._hass = hass;
+    if (this._openOnToday) this._showToday();
     if (!this._built) this._build();
     this._menu.hass = hass;
     this._card.hass = hass;

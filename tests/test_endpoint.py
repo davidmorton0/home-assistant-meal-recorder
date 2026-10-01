@@ -234,6 +234,8 @@ async def test_the_buttons_move_by_a_day_a_week_and_a_month(hass, entry):
     assert await press("next_week") == ("October", "8")
     assert await press("previous_week") == ("October", "1")
     assert await press("previous_week") == ("September", "24")
+    await call(hass, "select", "select_option", entity_id="select.meals_day", option="2")
+    assert await press("today") == ("September", "24")
 
 
 @pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
@@ -315,7 +317,7 @@ async def test_every_entity_on_the_page_exists(hass, entry):
     folder = Path(__file__).parents[1] / "custom_components" / "meal_recorder"
     text = (folder / "meal-recorder-panel.js").read_text() + (folder / "meal-recorder-card.js").read_text()
     entity_ids = set(re.findall(r"\b(?:select|button|sensor)\.meals_\w+", text))
-    assert len(entity_ids) == 11
+    assert len(entity_ids) == 12
     for entity_id in entity_ids:
         assert hass.states.get(entity_id) is not None, entity_id
 
