@@ -41,6 +41,8 @@ const weekStart = (date) => {
 
 // Fixed axes, so a week reads the same whatever is in it.
 const KCAL_MAX = 3000;
+// Adult reference intakes from food labels (EU Regulation 1169/2011, Annex XIII).
+const INTAKES = { kcal: 2000, protein: 50, carbohydrate: 260, fat: 70 };
 const MACRO_MAX = 400;
 
 const addDays = (date, days) => {
@@ -246,7 +248,8 @@ class MealRecorderPanel extends HTMLElement {
       ({ key }, top) => {
         const value = kcal[key] || 0;
         return `<div class="bar" style="height:${Math.min(100, (value / top) * 100)}%" title="${key}: ${value} kcal"></div>`;
-      }
+      },
+      [{ value: INTAKES.kcal, cls: "t0", label: `${INTAKES.kcal} kcal` }]
     );
 
     // One scale across the three macros, so their bars compare.
@@ -257,12 +260,17 @@ class MealRecorderPanel extends HTMLElement {
         MACROS.map(([field, label], index) => {
           const value = (days[field] || {})[key] || 0;
           return `<div class="bar s${index + 1}" style="height:${Math.min(100, (value / top) * 100)}%" title="${key}: ${label} ${value} g"></div>`;
-        }).join("")
+        }).join(""),
+      MACROS.map(([field, label], index) => ({
+        value: INTAKES[field],
+        cls: `t${index + 1}`,
+        label: `${label} ${INTAKES[field]}g`,
+      }))
     );
   }
 
   // Axis, gridlines, bars and the day labels, as one block of markup.
-  _plot(week, top, bars) {
+  _plot(week, top, bars, intakes = []) {
     const ticks = [0, 25, 50, 75, 100];
     return `
       <div class="axis">
@@ -275,6 +283,12 @@ class MealRecorderPanel extends HTMLElement {
             .map((entry) => `<div class="col${entry.key === this._day ? " on" : ""}">${bars(entry, top)}</div>`)
             .join("")}
         </div>
+        ${intakes
+          .map(
+            ({ value, cls, label }) =>
+              `<div class="intake ${cls}" style="bottom:${Math.min(100, (value / top) * 100)}%" title="Reference intake: ${label}"><span>${label}</span></div>`
+          )
+          .join("")}
       </div>
       <div class="ticks">
         ${week
@@ -321,6 +335,15 @@ const STYLE = `
   .s1 { background: #2a78d6; }
   .s2 { background: #eb6834; }
   .s3 { background: #199e70; }
+  /* Reference intakes: a dashed line over the bars, labelled at its right end. */
+  .intake { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--primary-text-color); pointer-events: none; }
+  .intake span { position: absolute; right: 0; bottom: 2px; font-size: 0.72em; line-height: 1; padding: 1px 3px; border-radius: 3px; background: var(--card-background-color); }
+  .t0 { border-color: var(--primary-text-color); }
+  .t1 { border-color: #2a78d6; }
+  .t2 { border-color: #eb6834; }
+  .t3 { border-color: #199e70; }
+  /* Protein (50 g) and fat (70 g) sit close together, so fat is labelled at the left. */
+  .t3 span { right: auto; left: 0; }
   .legend { display: flex; gap: 10px; font-size: 0.8em; color: var(--secondary-text-color); }
   .key { display: inline-flex; align-items: center; gap: 4px; }
   .key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
@@ -328,6 +351,8 @@ const STYLE = `
     .s1 { background: #3987e5; }
     .s2 { background: #d95926; }
     .s3 { background: #199e70; }
+    .t1 { border-color: #3987e5; }
+    .t2 { border-color: #d95926; }
   }
   .tick { font-size: 0.8em; display: flex; flex-direction: column; align-items: center; line-height: 1.1; color: var(--secondary-text-color); }
   .none { color: var(--secondary-text-color); padding: 12px 0; }
