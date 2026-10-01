@@ -142,18 +142,20 @@ class MealRecorderCard extends HTMLElement {
       <ha-card>
         <div class="head">
           <div>
-            <div class="title">${escape(a.person)}</div>
-            <div class="sub">${escape(day)}</div>
+            <div class="name-line">
+              <span class="title">${escape(a.person)}</span>
+              <span class="sub">${escape(day)}</span>
+            </div>
+            <div class="total">
+              <strong>Day total ${totals.kcal ?? 0} kcal</strong>
+              <span>protein ${totals.protein ?? 0}g · carb ${totals.carbohydrate ?? 0}g · fat ${totals.fat ?? 0}g</span>
+            </div>
           </div>
           <button class="primary" data-action="add" ${this._form ? "disabled" : ""}><ha-icon icon="mdi:plus"></ha-icon>Add item</button>
         </div>
         ${this._form && !this._form.id ? this._formHtml() : ""}
         ${this._error ? `<div class="error">${escape(this._error)}</div>` : ""}
         ${sections}
-        <div class="total">
-          <strong>Day total ${totals.kcal ?? 0} kcal</strong>
-          <span>protein ${totals.protein ?? 0}g · carb ${totals.carbohydrate ?? 0}g · fat ${totals.fat ?? 0}g</span>
-        </div>
       </ha-card>`;
     this._bind();
   }
@@ -172,7 +174,6 @@ class MealRecorderCard extends HTMLElement {
     }
     return `
       <div class="row">
-        <span class="time">${escape(item.time)}</span>
         <span class="name">${escape(item.name)}${item.portion ? `<span class="portion">${escape(item.portion)} · ${item.mass} g</span>` : `<span class="portion">${item.mass} g</span>`}</span>
         <span class="kcal">${item.kcal} kcal<span class="macros">protein ${item.protein}g · carb ${item.carbohydrate}g · fat ${item.fat}g</span></span>
         <span class="actions">
@@ -234,14 +235,14 @@ const STYLE = `
   ha-card { padding: 16px; }
   .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
   .title { font-size: 1.3em; font-weight: 500; }
-  .sub, .none, .portion, .macros, .time { color: var(--secondary-text-color); }
+  .name-line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+  .sub, .none, .portion, .macros { color: var(--secondary-text-color); }
   .meal { margin-top: 12px; }
   .meal-head { display: flex; justify-content: space-between; font-weight: 500; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .none { padding: 6px 0; font-style: italic; }
   /* Wraps onto a second line in a narrow card, rather than squeezing the name. */
   .row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--divider-color); }
   .row.confirm { justify-content: space-between; background: color-mix(in srgb, var(--error-color) 10%, transparent); padding: 6px 8px; }
-  .time { flex: 0 0 3.2em; }
   .name, .kcal { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
   .name { flex: 1 1 9em; }
   .kcal { flex: 0 1 auto; margin-left: auto; text-align: right; }
@@ -262,7 +263,7 @@ const STYLE = `
   .numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
   .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .error { color: var(--error-color); padding: 4px 0; }
-  .total { display: flex; flex-direction: column; margin-top: 12px; gap: 2px; }
+  .total { display: flex; flex-direction: column; margin-top: 6px; gap: 2px; }
   .total span { color: var(--secondary-text-color); }
 `;
 

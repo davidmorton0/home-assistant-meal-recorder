@@ -72,6 +72,21 @@ date and time, so past days can be filled in. The card calls the
 `meal_recorder.add_item`, `update_item` and `delete_item` actions, which check
 items with the same rules as the endpoint.
 
+## Food preferences for the skill
+
+The food photo skill (`skill/food-to-home-assistant`) has a **User preferences**
+section in its `SKILL.md`. Fill it in, in your installed copy of the skill, so
+Claude identifies food and estimates nutrition the way you eat:
+
+| Section | What to write |
+|---|---|
+| Dietary preferences | Vegan, vegetarian, or other diets. |
+| Usual shops | The shops you buy from, so products can be identified. |
+| Common items | Things you have often, such as your usual breakfasts or coffee. |
+| Names for common meals | A name and what it contains, e.g. "my usual work lunch — cheese sandwich, apple, crisps". |
+
+Replace the bracketed examples with your own. Sections can be left empty.
+
 ## Security
 
 **Serve it over TLS.** Basic auth sends the same username and password on every

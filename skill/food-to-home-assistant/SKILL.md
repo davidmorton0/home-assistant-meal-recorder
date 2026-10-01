@@ -7,6 +7,26 @@ description: Analyse a photo of a meal (identify each food, estimate portion, ca
 
 The user takes a photo of what they're eating. You work out what's on the plate and its nutrition, check it with them, then send it to their Home Assistant so it can be logged and totalled there.
 
+## User preferences
+
+The user fills these in. Use them when identifying food and estimating nutrition.
+
+### Dietary preferences
+
+(e.g. vegan, vegetarian)
+
+### Usual shops
+
+(shops the user buys from, to help identify products)
+
+### Common items
+
+(e.g. usual breakfasts, usual coffee)
+
+### Names for common meals
+
+(e.g. "my usual work lunch" — what it contains)
+
 ## Step 1: Identify the food
 
 Look at the photo and list each distinct item with an estimated portion (grams or a household measure like "1 medium potato"). Use visual cues for size: plate diameter (a standard dinner plate is about 26–27 cm), cutlery, and how much of the plate each item covers.
@@ -52,6 +72,7 @@ Once confirmed, write a meal file and run the send script:
 
 - `meal` is one of breakfast, lunch, dinner, snack. Infer it from the time of day or what the user said; ask only if it's genuinely unclear.
 - `mass` is the portion weight in grams and is required for every item, so always estimate it.
+- `portion` is a household measure ("2 burgers", "1 bowl"). If the amount is only a mass ("150 g"), set `portion` to `""`: the mass is already in `mass`, and repeating it shows the weight twice.
 - Nutrient numbers: `kcal`, and `protein`, `carbohydrate`, `fat` in grams. Numbers only, never text.
 - `name` up to 200 characters, `portion` up to 100. Put brand and key swaps in the name (e.g. "Vegan cauliflower cheese (soya milk)"), because there is no notes field.
 - `created_at` (optional): an ISO 8601 time with offset, e.g. `2026-09-24T13:00:00+01:00`. Omit it when the user is logging a meal as they eat it, and the script uses the current time. Set it when they say when they ate (e.g. "this was lunch yesterday").
