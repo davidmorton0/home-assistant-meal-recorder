@@ -72,6 +72,21 @@ date and time, so past days can be filled in. The card calls the
 `meal_recorder.add_item`, `update_item` and `delete_item` actions, which check
 items with the same rules as the endpoint.
 
+## Food preferences for the skill
+
+The food photo skill (`skill/food-to-home-assistant`) has a **User preferences**
+section in its `SKILL.md`. Fill it in, in your installed copy of the skill, so
+Claude identifies food and estimates nutrition the way you eat:
+
+| Section | What to write |
+|---|---|
+| Dietary preferences | Vegan, vegetarian, or other diets. |
+| Usual shops | The shops you buy from, so products can be identified. |
+| Common items | Things you have often, such as your usual breakfasts or coffee. |
+| Names for common meals | A name and what it contains, e.g. "my usual work lunch — cheese sandwich, apple, crisps". |
+
+Replace the bracketed examples with your own. Sections can be left empty.
+
 ## Security
 
 **Serve it over TLS.** Basic auth sends the same username and password on every
@@ -106,8 +121,11 @@ exclude them in your `recorder:` configuration.
 
 Each person's daily totals are also written to Home Assistant's long-term
 statistics, from the CSV files rather than the sensors, so every recorded day
-is there — including days filled in or corrected later. They are rewritten on
-every change, at midnight, and at startup.
+is there — including days filled in or corrected later. They are rewritten from
+the changed day to today when an item is added, edited or deleted; from the
+week shown to today when the Meals page shows a week that has a file; and for
+today at midnight and at startup. A file edited by hand reaches the statistics
+when its week is shown on the Meals page.
 
 | Statistic | Unit |
 |---|---|
@@ -116,6 +134,22 @@ every change, at midnight, and at startup.
 
 `<person>` is the folder name: lower case, spaces as underscores. They are
 statistics, not entities, so only a statistics-graph card can draw them.
+
+### Resetting statistics
+
+To rewrite a person's statistics from the files, from a week to today, run
+this in **Developer tools → Actions**, with the folder name and the Monday the
+week starts on:
+
+```yaml
+action: meal_recorder.update_week_statistics
+data:
+  folder: david
+  start: "2026-08-24"
+```
+
+Then move the graph to another week and back. Nothing is rewritten when the
+person has no file for any day of that week.
 
 A dashboard to paste into the raw configuration editor (dashboard → pencil →
 three dots → **Raw configuration editor**), replacing `david` with the folder

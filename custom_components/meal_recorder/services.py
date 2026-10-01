@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.helpers import config_validation as cv
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.util import dt as dt_util
@@ -17,6 +18,7 @@ from .items import validate_batch
 SERVICE_ADD = "add_item"
 SERVICE_UPDATE = "update_item"
 SERVICE_DELETE = "delete_item"
+SERVICE_UPDATE_WEEK = "update_week_statistics"
 
 _FIELDS = {
     vol.Required("created_at"): str,
@@ -28,6 +30,7 @@ _FIELDS = {
 ADD_SCHEMA = vol.Schema({vol.Required("person"): str, **_FIELDS})
 UPDATE_SCHEMA = vol.Schema({vol.Required("id"): str, **_FIELDS})
 DELETE_SCHEMA = vol.Schema({vol.Required("id"): str})
+UPDATE_WEEK_SCHEMA = vol.Schema({vol.Required("folder"): str, vol.Required("start"): cv.date})
 
 
 def async_register_services(hass: HomeAssistant) -> None:
@@ -37,10 +40,13 @@ def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_ADD, _add, schema=ADD_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_UPDATE, _update, schema=UPDATE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_DELETE, _delete, schema=DELETE_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_UPDATE_WEEK, _update_week, schema=UPDATE_WEEK_SCHEMA
+    )
 
 
 def async_remove_services(hass: HomeAssistant) -> None:
-    for service in (SERVICE_ADD, SERVICE_UPDATE, SERVICE_DELETE):
+    for service in (SERVICE_ADD, SERVICE_UPDATE, SERVICE_DELETE, SERVICE_UPDATE_WEEK):
         hass.services.async_remove(DOMAIN, service)
 
 
@@ -94,4 +100,13 @@ async def _delete(call: ServiceCall) -> None:
         folder, _ = await coordinator.async_find_item(call.data["id"])
         await coordinator.async_delete_item(folder, call.data["id"])
     except ItemNotFound as err:
+        raise ServiceValidationError(str(err)) from err
+
+
+async def _update_week(call: ServiceCall) -> None:
+    """Rewrite a person's daily totals from a week on, before the page draws it."""
+    coordinator = _coordinator(call)
+    try:
+        await coordinator.async_update_week(call.data["folder"], call.data["start"])
+    except UnknownPerson as err:
         raise ServiceValidationError(str(err)) from err

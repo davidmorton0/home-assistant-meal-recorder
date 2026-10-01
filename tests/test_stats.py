@@ -111,3 +111,114 @@ async def test_the_page_can_build_the_statistic_id(hass: HomeAssistant, tmp_path
 
     folder = hass.states.get("sensor.meals_day").attributes["folder"]
     assert await read_days(hass, f"meal_recorder:{folder}_kcal")
+
+
+def write_rows(tmp_path, rows: list[tuple[str, str, float]]) -> None:
+    """Write (id, ISO time, kcal) rows into their months' files, replacing what is there."""
+    folder = tmp_path / "meal_recorder" / "david"
+    folder.mkdir(parents=True, exist_ok=True)
+    for path in folder.glob("*.csv"):
+        path.unlink()
+    files: dict[str, str] = {}
+    for item_id, when, kcal in rows:
+        name = f"{when[5:7]}_{when[:4]}.csv"
+        files[name] = files.get(name, HEADER) + csv_row(item_id, when, kcal)
+    for name, text in files.items():
+        (folder / name).write_text(text, encoding="utf-8")
+
+
+async def setup_with_rows(hass: HomeAssistant, tmp_path, rows: list[tuple[str, str, float]]):
+    hass.config.config_dir = str(tmp_path)
+    write_rows(tmp_path, rows)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Meal Recorder",
+        data={
+            CONF_USERNAME: "meals",
+            CONF_PASSWORD_HASH: hash_password("secret"),
+            CONF_PERSONS: {"david": "David"},
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await async_wait_recording_done(hass)
+
+
+async def update_week(hass: HomeAssistant, start) -> None:
+    await hass.services.async_call(
+        DOMAIN,
+        "update_week_statistics",
+        {"folder": "david", "start": start.isoformat()},
+        blocking=True,
+    )
+    await async_wait_recording_done(hass)
+
+
+def changes_by_day(rows: list[dict]) -> dict:
+    return {
+        dt_util.as_local(dt_util.utc_from_timestamp(row["start"])).date(): row["change"]
+        for row in rows
+    }
+
+
+async def test_showing_a_week_zeroes_a_first_day_deleted_by_hand(hass: HomeAssistant, tmp_path):
+    today = dt_util.now().date()
+    first, later = today - timedelta(days=10), today - timedelta(days=3)
+    await setup_with_rows(
+        hass,
+        tmp_path,
+        [("a1", f"{first}T08:15:00", 300.0), ("a2", f"{later}T08:15:00", 200.0)],
+    )
+    assert changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))[first] == 300.0
+
+    write_rows(tmp_path, [("a2", f"{later}T08:15:00", 200.0)])
+    await update_week(hass, first)
+
+    changes = changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
+    assert changes[first] == 0.0
+    assert changes[later] == 200.0
+
+
+async def test_showing_a_week_continues_the_stored_running_totals(hass: HomeAssistant, tmp_path):
+    today = dt_util.now().date()
+    first, later = today - timedelta(days=10), today - timedelta(days=3)
+    await setup_with_rows(
+        hass,
+        tmp_path,
+        [("a1", f"{first}T08:15:00", 100.0), ("a2", f"{later}T08:15:00", 200.0)],
+    )
+
+    # The earlier day changes too, but only the shown week on is rewritten.
+    write_rows(tmp_path, [("a1", f"{first}T08:15:00", 150.0), ("a2", f"{later}T08:15:00", 250.0)])
+    await update_week(hass, later)
+
+    changes = changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
+    assert (changes[first], changes[later], changes[today]) == (100.0, 250.0, 0.0)
+
+
+async def test_a_week_without_files_is_left_alone(hass: HomeAssistant, tmp_path):
+    today = dt_util.now().date()
+    await setup_with_rows(hass, tmp_path, [("a1", f"{today}T08:15:00", 300.0)])
+    before = await read_days(hass, "meal_recorder:david_kcal")
+
+    await update_week(hass, today - timedelta(days=100))
+
+    assert await read_days(hass, "meal_recorder:david_kcal") == before
+
+
+async def test_setup_while_starting_waits_to_write_the_statistics(hass: HomeAssistant, tmp_path):
+    """The recorder's queue does not move until Home Assistant has started."""
+    from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+    from homeassistant.core import CoreState
+
+    today = dt_util.now().date()
+    hass.set_state(CoreState.starting)
+    await setup_with_rows(hass, tmp_path, [("a1", f"{today}T08:15:00", 300.0)])
+    assert await read_days(hass, "meal_recorder:david_kcal") == []
+
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    await async_wait_recording_done(hass)
+    assert changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))[today] == 300.0
