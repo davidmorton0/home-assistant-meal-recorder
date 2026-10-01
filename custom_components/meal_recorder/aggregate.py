@@ -91,24 +91,33 @@ def month_summary(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
 
 
 def daily_series(
-    records: Iterable[dict[str, Any]], end: date
+    records: Iterable[dict[str, Any]],
+    end: date,
+    start: date | None = None,
+    base: dict[str, float] | None = None,
 ) -> list[tuple[date, dict[str, float], dict[str, float]]]:
-    """Every day from the first with items to end: its totals and the running totals.
+    """Every day from start to end: its totals and the running totals.
 
-    Days with nothing recorded are included as zero, so a day whose items were
-    all deleted still has a row and the running totals after it stay true.
+    Without a start the series begins on the first day with items. Items before
+    start are left out, and the running totals begin from base. Days with
+    nothing recorded are included as zero, so a day whose items were all
+    deleted still has a row and the running totals after it stay true.
     """
     per_day: dict[date, dict[str, float]] = {}
     for record in records:
-        day = per_day.setdefault(record["created_at"].date(), _empty_totals())
-        _add(day, record)
-    if not per_day:
-        return []
+        when = record["created_at"].date()
+        if start is not None and when < start:
+            continue
+        _add(per_day.setdefault(when, _empty_totals()), record)
+    if start is None:
+        if not per_day:
+            return []
+        start = min(per_day)
 
-    running = _empty_totals()
+    running = {**_empty_totals(), **(base or {})}
     series: list[tuple[date, dict[str, float], dict[str, float]]] = []
-    day = min(per_day)
-    last = max(end, max(per_day))
+    day = start
+    last = max(end, *per_day) if per_day else end
     while day <= last:
         totals = per_day.get(day, _empty_totals())
         for field in _FIELDS:

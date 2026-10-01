@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.start import async_at_started
 
 from .api import MealItemsView
 from .const import DOMAIN
@@ -73,6 +74,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Statistics are skipped while Home Assistant starts, so write today's once started.
+    async def _write_statistics(_hass: HomeAssistant) -> None:
+        await coordinator.async_update_statistics()
+
+    entry.async_on_unload(async_at_started(hass, _write_statistics))
 
     # The daily totals always describe today, so they roll over at midnight.
     entry.async_on_unload(

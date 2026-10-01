@@ -189,6 +189,8 @@ class MealRecorderPanel extends HTMLElement {
     let days = {};
     let failed = null;
     try {
+      // Bring the week's totals up to date with the files before reading them.
+      await this._hass.callService("meal_recorder", "update_week_statistics", { folder, start: isoDate(start) });
       const result = await this._hass.callWS({
         type: "recorder/statistics_during_period",
         start_time: start.toISOString(),

@@ -137,6 +137,20 @@
           "description": "The item's id."
         }
       }
+    },
+    "update_week_statistics": {
+      "name": "Update week statistics",
+      "description": "Rewrites a person's daily totals from the start of a week to today, from the files. Does nothing when no file covers the week.",
+      "fields": {
+        "folder": {
+          "name": "Folder",
+          "description": "The person's folder name."
+        },
+        "start": {
+          "name": "Start",
+          "description": "The first day of the week."
+        }
+      }
     }
   }
 }

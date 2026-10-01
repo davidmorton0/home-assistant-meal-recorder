@@ -121,8 +121,11 @@ exclude them in your `recorder:` configuration.
 
 Each person's daily totals are also written to Home Assistant's long-term
 statistics, from the CSV files rather than the sensors, so every recorded day
-is there — including days filled in or corrected later. They are rewritten on
-every change, at midnight, and at startup.
+is there — including days filled in or corrected later. They are rewritten from
+the changed day to today when an item is added, edited or deleted; from the
+week shown to today when the Meals page shows a week that has a file; and for
+today at midnight and at startup. A file edited by hand reaches the statistics
+when its week is shown on the Meals page.
 
 | Statistic | Unit |
 |---|---|
@@ -131,6 +134,22 @@ every change, at midnight, and at startup.
 
 `<person>` is the folder name: lower case, spaces as underscores. They are
 statistics, not entities, so only a statistics-graph card can draw them.
+
+### Resetting statistics
+
+To rewrite a person's statistics from the files, from a week to today, run
+this in **Developer tools → Actions**, with the folder name and the Monday the
+week starts on:
+
+```yaml
+action: meal_recorder.update_week_statistics
+data:
+  folder: david
+  start: "2026-08-24"
+```
+
+Then move the graph to another week and back. Nothing is rewritten when the
+person has no file for any day of that week.
 
 A dashboard to paste into the raw configuration editor (dashboard → pencil →
 three dots → **Raw configuration editor**), replacing `david` with the folder

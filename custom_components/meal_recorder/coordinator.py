@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, NamedTuple
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -163,6 +163,11 @@ class MealRecorderCoordinator:
                 raise DuplicateId(duplicates)
             await self.hass.async_add_executor_job(self.store.append_items, items)
         await self.async_refresh()
+        since: dict[str, date] = {}
+        for item in items:
+            day = item["created_at"].date()
+            since[item["folder"]] = min(day, since.get(item["folder"], day))
+        await self.async_update_statistics(since)
         return [item["id"] for item in items]
 
     async def async_find_item(self, item_id: str) -> tuple[str, dict[str, Any]]:
@@ -178,22 +183,33 @@ class MealRecorderCoordinator:
     async def async_update_item(self, folder: str, item: dict[str, Any]) -> None:
         """Replace a person's stored item with the same id. Raises ItemNotFound."""
         async with self._write_lock:
+            old = await self.hass.async_add_executor_job(
+                self.store.get_item, folder, item["id"]
+            )
             found = await self.hass.async_add_executor_job(
                 self.store.update_item, folder, item
             )
         if not found:
             raise ItemNotFound(item["id"])
         await self.async_refresh()
+        day = item["created_at"].date()
+        if old is not None:
+            day = min(day, old["created_at"].date())
+        await self.async_update_statistics({folder: day})
 
     async def async_delete_item(self, folder: str, item_id: str) -> None:
         """Remove a person's stored item. Raises ItemNotFound."""
         async with self._write_lock:
+            old = await self.hass.async_add_executor_job(
+                self.store.get_item, folder, item_id
+            )
             found = await self.hass.async_add_executor_job(
                 self.store.delete_item, folder, item_id
             )
-        if not found:
+        if not found or old is None:
             raise ItemNotFound(item_id)
         await self.async_refresh()
+        await self.async_update_statistics({folder: old["created_at"].date()})
 
     # The dashboard's view ------------------------------------------------
 
@@ -292,14 +308,40 @@ class MealRecorderCoordinator:
         await self._async_read_view()
         await self.async_update_statistics()
 
-    async def async_update_statistics(self) -> None:
-        """Rewrite every person's daily totals, which is what the graphs draw."""
+    async def async_update_statistics(self, since: dict[str, date] | None = None) -> None:
+        """Rewrite daily totals, which is what the graphs draw, from a day to today.
+
+        since maps a folder to the first day to rewrite. Without it, every
+        person's today is rewritten. Nothing is written until Home Assistant has
+        started: the recorder only works through its queue from then on.
+        """
+        if self.hass.state is not CoreState.running:
+            return
         today = dt_util.now().date()
-        for folder in self.folders:
+        if since is None:
+            since = {folder: today for folder in self.folders}
+        for folder, day in since.items():
+            start = min(day, today)
+            base = await stats.async_sums_before(self.hass, folder, start)
             series = await self.hass.async_add_executor_job(
-                stats.read_series, self.store, folder, today
+                stats.read_series, self.store, folder, start, today, base
             )
             stats.write(self.hass, folder, self.person_name(folder), series)
+
+    async def async_update_week(self, folder: str, start: date) -> None:
+        """Rewrite a person's daily totals from a week to today, for the page.
+
+        A week with no file for any of its days is left as it is.
+        """
+        if folder not in self.persons:
+            raise UnknownPerson(folder)
+        has_files = await self.hass.async_add_executor_job(
+            stats.has_files, self.store, folder, start, start + timedelta(days=6)
+        )
+        if not has_files:
+            return
+        await self.async_update_statistics({folder: start})
+        await stats.async_wait_written(self.hass)
 
     def _read_all(self, folders: list[str], selected: date) -> dict[str, dict[str, Any]]:
         today = dt_util.now().date()

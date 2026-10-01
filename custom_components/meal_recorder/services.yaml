@@ -65,3 +65,13 @@ delete_item:
       required: true
       selector:
         text:
+update_week_statistics:
+  fields:
+    folder:
+      required: true
+      selector:
+        text:
+    start:
+      required: true
+      selector:
+        date:
