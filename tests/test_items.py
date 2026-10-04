@@ -43,7 +43,7 @@ def test_accepts_a_batch():
     assert errors == []
     assert len(stored) == 1
     assert stored[0]["person"] == "David"
-    assert stored[0]["received_at"] == NOW
+    assert stored[0]["received_at"] == NOW.replace(tzinfo=None)
     assert stored[0]["id"]
 
 
@@ -71,14 +71,20 @@ def test_missing_person_is_rejected(person):
     assert errors[0]["field"] == "person"
 
 
-def test_naive_time_is_read_in_the_given_zone():
+def test_a_naive_time_is_already_local():
+    """Times are stored as the local clock reading, with no offset on them."""
     stored, _ = validate([good(created_at="2026-09-24T08:15:00")])
-    assert stored[0]["created_at"].utcoffset() == timedelta(hours=1)
+    assert stored[0]["created_at"] == datetime(2026, 9, 24, 8, 15)
+
+
+def test_an_offset_is_moved_to_the_local_zone():
+    stored, _ = validate([good(created_at="2026-09-24T09:15:00+02:00")])
+    assert stored[0]["created_at"] == datetime(2026, 9, 24, 8, 15)
 
 
 def test_zulu_time_is_accepted():
     stored, _ = validate([good(created_at="2026-09-24T07:15:00Z")])
-    assert stored[0]["created_at"].utcoffset() == timedelta(0)
+    assert stored[0]["created_at"] == datetime(2026, 9, 24, 8, 15)
 
 
 @pytest.mark.parametrize("field", ["mass", "kcal", "protein", "carbohydrate", "fat"])
@@ -114,8 +120,13 @@ def test_a_batch_is_all_or_nothing():
     assert [error["index"] for error in errors] == [1]
 
 
-def test_payload_must_be_a_list():
-    stored, errors = validate({"item": good()})
+def test_a_single_item_on_its_own_is_accepted():
+    stored, errors = validate(good())
+    assert errors == [] and len(stored) == 1
+
+
+def test_items_must_be_a_list():
+    stored, errors = validate({"items": good()})
     assert stored == [] and errors[0]["field"] == "items"
 
 

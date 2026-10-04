@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.start import async_at_started
 
-from .api import MealItemsView
+from .api import MealItemView, MealItemsView
 from .const import DOMAIN
 from .coordinator import MealRecorderCoordinator
 from .services import async_register_services, async_remove_services
@@ -41,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not hass.data.get(f"{DOMAIN}_view_registered"):
         hass.http.register_view(MealItemsView(hass))
+        hass.http.register_view(MealItemView(hass))
         folder = Path(__file__).parent
         await hass.http.async_register_static_paths(
             [

@@ -6,8 +6,8 @@ dashboard.
 
 ## What it does
 
-- Adds an endpoint to Home Assistant, protected by HTTP Basic auth, that
-  accepts a batch of food items.
+- Adds a REST endpoint to Home Assistant, protected by HTTP Basic auth, for
+  listing, storing, replacing and deleting food items.
 - Stores them as CSV: a folder per person, a file per month
   (`config/meal_recorder/<person>/MM_YYYY.csv`).
 - Publishes each person's day and month figures as entities.
@@ -29,7 +29,20 @@ integration, so it changes when the integration is updated and cannot be edited
 in the UI; to lay things out your own way, build a dashboard from the entities
 below and the item card (`custom:meal-recorder-card`).
 
-## Recording items
+## The REST endpoint
+
+| Method | Path | What it does |
+|---|---|---|
+| `GET` | `/api/meal_recorder/items` | List items. |
+| `POST` | `/api/meal_recorder/items` | Store one item or a batch. |
+| `GET` | `/api/meal_recorder/items/{id}` | Read one item. |
+| `PUT` | `/api/meal_recorder/items/{id}` | Replace one item. |
+| `DELETE` | `/api/meal_recorder/items/{id}` | Delete one item. |
+
+Every method takes the same HTTP Basic credentials, set when the integration was
+added.
+
+### Storing items
 
 ```sh
 curl -u meals:secret \
@@ -38,12 +51,13 @@ curl -u meals:secret \
   https://ha.example.com/api/meal_recorder/items
 ```
 
-A bare JSON list is accepted in place of `{"items": [...]}`.
+A bare JSON list, or a single item on its own, is accepted in place of
+`{"items": [...]}`. One item stored gives a `Location` header holding its path.
 
 | Field | Rule |
 |---|---|
 | `id` | A UUID the client makes, required. An id that is already stored, or repeated in the batch, is refused, so resending a batch does not store it twice. |
-| `created_at` | ISO 8601. Without an offset it is read in Home Assistant's time zone. |
+| `created_at` | ISO 8601. Without an offset it is read as a local time; with one it is moved to Home Assistant's time zone. |
 | `person` | Required. The person must have been added in the integration. |
 | `name` | Short text, required. |
 | `meal` | `breakfast`, `lunch`, `dinner` or `snack`. |
@@ -53,11 +67,52 @@ A bare JSON list is accepted in place of `{"items": [...]}`.
 A batch is all or nothing: if any item is invalid, nothing is stored and the
 reply says which items were wrong.
 
+### Listing items
+
+```sh
+curl -u meals:secret 'https://ha.example.com/api/meal_recorder/items?person=David&date=2026-09-24'
+```
+
+| Parameter | Rule |
+|---|---|
+| `person` | Required. A person who has been added. |
+| `date` | A day, `YYYY-MM-DD`. |
+| `month` | A whole month, `YYYY-MM`. Not with `date`. |
+
+Without `date` or `month`, today is listed. The reply holds `items`, `count` and
+the `from` and `to` days it covers; each item holds the fields above, plus
+`received_at`, the time its row was written. Times come back as they are
+stored: local, with no offset. One person's items are listed at a time: ask
+again for each person.
+
+### Replacing and deleting an item
+
+```sh
+curl -u meals:secret -X PUT \
+  -H 'Content-Type: application/json' \
+  -d '{"created_at":"2026-09-24T08:15:00+01:00","name":"Porridge with soya milk","meal":"breakfast","portion":"1 bowl","mass":250,"kcal":280,"protein":9,"carbohydrate":52,"fat":5}' \
+  https://ha.example.com/api/meal_recorder/items/0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10
+
+curl -u meals:secret -X DELETE \
+  https://ha.example.com/api/meal_recorder/items/0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10
+```
+
+`PUT` takes one item and replaces every field of the stored one, which keeps its
+id and its person. `received_at` is the time the row was written, so it is set
+again on every change. An `id` or `person` in the
+body must match the stored item. Changing `created_at` to another month moves
+the item to that month's file. The reply holds the item as it is now stored.
+
+### Replies
+
 | Status | Meaning |
 |---|---|
+| 200 | The item, or the list, is in the reply. |
 | 201 | Stored. The reply gives the count and the identifiers. |
-| 400 | The payload or an item is invalid. |
+| 204 | Deleted. |
+| 400 | The payload, an item or a list parameter is invalid. `person_required`: a list request named no person. |
 | 401 | Wrong or missing credentials. |
+| 404 | `not_found`: no item has that id. `unknown_person`: a `person` filter names someone who has not been added. |
 | 409 | `duplicate_id`: an item's id is already stored (the reply lists them). `unknown_person`: the person has not been added in the integration. |
 | 413 | The request or the batch is too large. |
 | 500 | Writing failed; details are in the Home Assistant log. |
@@ -222,6 +277,14 @@ Watch out for these:
 
 `config/meal_recorder/<person>/MM_YYYY.csv`, one row per item, with a header
 row. The person is not repeated in the rows — the folder says whose they are.
+
+`created_at` and `received_at` hold the local clock reading, to the second,
+with no UTC offset: `2026-09-24T08:15:00`. A time sent with an offset is moved
+to Home Assistant's time zone before it is written, so the file always shows
+the time on the wall. `received_at` is the time the row was written, set again
+whenever the row is changed. Files written before this format carry an offset;
+it is dropped as they are read, keeping the clock reading they hold, so old and
+new rows sit in one file.
 The files are the record of truth: edit one by hand and the change is picked up
 on the next read. The folder is under `config`, so backups include it.
 

@@ -175,10 +175,15 @@ class MealRecorderPanel extends HTMLElement {
       this._day = date;
       this._offset = 0;
     }
+    // An item added, changed or deleted updates this sensor, and the bars are
+    // then out of date even though the week shown has not moved.
+    const itemsChanged = state.last_updated !== this._updated;
+    this._updated = state.last_updated;
+
     const start = addDays(weekStart(new Date(`${date}T00:00:00`)), this._offset * 7);
     const key = `${folder}|${isoDate(start)}`;
-    if (key === this._week) {
-      // Same week, so only the highlighted day can have changed.
+    if (key === this._week && !itemsChanged) {
+      // Same week and the same items, so only the highlighted day can have changed.
       if (dayChanged && this._rows) this._drawWeek(this._start, this._rows, this._failed);
       return;
     }
@@ -187,6 +192,7 @@ class MealRecorderPanel extends HTMLElement {
   }
 
   async _loadWeek(folder, start) {
+    const key = `${folder}|${isoDate(start)}`;
     const id = (field) => `meal_recorder:${folder}_${field}`;
     let days = {};
     let failed = null;
@@ -214,6 +220,8 @@ class MealRecorderPanel extends HTMLElement {
     } catch (err) {
       failed = err?.message || String(err);
     }
+    // Another week was asked for while this one was loading, so drop it.
+    if (this._week !== key) return;
     this._start = start;
     this._rows = days;
     this._failed = failed;

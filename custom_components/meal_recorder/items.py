@@ -51,9 +51,20 @@ def _parse_created_at(value: Any, tz: tzinfo) -> datetime:
         parsed = datetime.fromisoformat(text)
     except ValueError as err:
         raise ValueError("not a valid ISO 8601 timestamp") from err
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=tz)
-    return parsed
+    return local_time(parsed, tz)
+
+
+def local_time(value: datetime, tz: tzinfo) -> datetime:
+    """The local clock reading of a time, to the second, with no offset on it.
+
+    Times are stored as the local time they happened at, so a file holds one
+    kind of timestamp and the clock readings in it are the ones the person saw.
+    A time that arrives with an offset is moved to the local zone first; one
+    that arrives without an offset is already local.
+    """
+    if value.tzinfo is not None:
+        value = value.astimezone(tz)
+    return value.replace(tzinfo=None, microsecond=0)
 
 
 def _parse_number(value: Any) -> float:
@@ -90,6 +101,9 @@ def validate_batch(
         raw_items = payload
     elif isinstance(payload, dict) and isinstance(payload.get("items"), list):
         raw_items = payload["items"]
+    elif isinstance(payload, dict) and "items" not in payload:
+        # A single item on its own, as a POST or PUT of one item sends it.
+        raw_items = [payload]
     else:
         return [], [{"index": None, "field": "items", "message": "expected a list of items"}]
 
@@ -105,7 +119,7 @@ def validate_batch(
             errors.append({"index": index, "field": None, "message": "item must be an object"})
             continue
 
-        item: dict[str, Any] = {"received_at": received_at}
+        item: dict[str, Any] = {"received_at": local_time(received_at, tz)}
 
         try:
             item["id"] = _parse_id(raw.get("id"))

@@ -55,6 +55,8 @@ def basic(username="meals", password="secret"):
 @pytest.fixture(name="entry")
 async def entry_fixture(hass: HomeAssistant, tmp_path):
     hass.config.config_dir = str(tmp_path)
+    # Items are stored as local times, so the zone the test items are sent in.
+    await hass.config.async_set_time_zone("Europe/London")
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Meal Recorder",
@@ -191,6 +193,167 @@ async def test_an_id_already_stored_is_refused(hass, hass_client_no_auth, entry)
 
 
 
+async def test_a_single_item_is_accepted(hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    response = await client.post(URL, json=item(), headers=basic())
+    assert response.status == HTTPStatus.CREATED
+    body = await response.json()
+    assert body["stored"] == 1
+    assert response.headers["Location"] == f"{URL}/{body['ids'][0]}"
+
+
+@pytest.mark.freeze_time("2026-09-24 12:00:00+01:00")
+async def test_the_collection_lists_a_day_a_month_and_a_person(hass, hass_client_no_auth, entry):
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_add_person("Sam")
+    client = await hass_client_no_auth()
+    today = item()
+    await client.post(
+        URL,
+        json=[
+            today,
+            item(created_at="2026-09-20T13:00:00+01:00", name="Soup"),
+            item(created_at="2026-08-31T13:00:00+01:00", name="Last month"),
+            item(person="Sam", name="Toast"),
+        ],
+        headers=basic(),
+    )
+
+    # A person and no day: today.
+    body = await (await client.get(f"{URL}?person=David", headers=basic())).json()
+    assert body["count"] == 1
+    assert (body["from"], body["to"]) == ("2026-09-24", "2026-09-24")
+    [stored] = body["items"]
+    assert stored["person"] == "David" and stored["kcal"] == 310
+    assert stored["id"] == today["id"]
+    assert stored["created_at"].startswith("2026-09-24T08:15:00")
+
+    body = await (await client.get(f"{URL}?person=Sam", headers=basic())).json()
+    assert [i["name"] for i in body["items"]] == ["Toast"]
+
+    body = await (await client.get(f"{URL}?person=David&date=2026-09-20", headers=basic())).json()
+    assert [i["name"] for i in body["items"]] == ["Soup"]
+
+    body = await (await client.get(f"{URL}?month=2026-09&person=david", headers=basic())).json()
+    assert [i["name"] for i in body["items"]] == ["Soup", "Porridge with milk"]
+
+
+async def test_the_collection_refuses_bad_filters(hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    for query, error in [
+        ("", "person_required"),
+        ("?date=2026-09-24", "person_required"),
+        ("?person=David&date=2026-13-01", "invalid_date"),
+        ("?person=David&month=2026-99", "invalid_month"),
+        ("?person=David&date=2026-09-24&month=2026-09", "date_and_month"),
+    ]:
+        response = await client.get(f"{URL}{query}", headers=basic())
+        assert response.status == HTTPStatus.BAD_REQUEST
+        assert (await response.json())["error"] == error
+
+    response = await client.get(f"{URL}?person=Sam", headers=basic())
+    assert response.status == HTTPStatus.NOT_FOUND
+    assert (await response.json())["error"] == "unknown_person"
+
+
+async def test_an_item_is_read_replaced_and_deleted(hass, hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    stored = item()
+    await client.post(URL, json=[stored], headers=basic())
+    item_url = f"{URL}/{stored['id']}"
+
+    body = await (await client.get(item_url, headers=basic())).json()
+    assert (body["id"], body["person"], body["name"]) == (stored["id"], "David", "Porridge with milk")
+    received_at = body["received_at"]
+
+    response = await client.put(
+        item_url, json={**ITEM, "name": "Porridge with soya milk", "kcal": 280}, headers=basic()
+    )
+    assert response.status == HTTPStatus.OK
+    body = await response.json()
+    assert (body["name"], body["kcal"], body["id"]) == ("Porridge with soya milk", 280.0, stored["id"])
+    # received_at is the time the row was written, so it moves on.
+    from datetime import datetime
+
+    assert datetime.fromisoformat(body["received_at"]) >= datetime.fromisoformat(received_at)
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    [record] = coordinator.store.read_month("david", 2026, 9)
+    assert record["name"] == "Porridge with soya milk"
+
+    response = await client.delete(item_url, headers=basic())
+    assert response.status == HTTPStatus.NO_CONTENT
+    assert coordinator.store.read_month("david", 2026, 9) == []
+
+
+async def test_a_replaced_item_can_move_month(hass, hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    stored = item()
+    await client.post(URL, json=[stored], headers=basic())
+    # Neither the id nor the person is needed in the body, as the skill's script sends it.
+    fields = {k: v for k, v in ITEM.items() if k != "person"}
+    response = await client.put(
+        f"{URL}/{stored['id']}",
+        json={**fields, "created_at": "2026-08-31T19:00:00+01:00"},
+        headers=basic(),
+    )
+    assert response.status == HTTPStatus.OK
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    assert coordinator.store.read_month("david", 2026, 9) == []
+    [moved] = coordinator.store.read_month("david", 2026, 8)
+    assert moved["id"] == stored["id"]
+
+
+async def test_an_unknown_item_is_not_found(hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    missing = f"{URL}/0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10"
+    for response in [
+        await client.get(missing, headers=basic()),
+        await client.put(missing, json=ITEM, headers=basic()),
+        await client.delete(missing, headers=basic()),
+    ]:
+        assert response.status == HTTPStatus.NOT_FOUND
+        assert (await response.json())["error"] == "not_found"
+
+
+async def test_a_replacement_is_checked(hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    stored = item()
+    await client.post(URL, json=[stored], headers=basic())
+    item_url = f"{URL}/{stored['id']}"
+
+    response = await client.put(item_url, json={**ITEM, "meal": "brunch"}, headers=basic())
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert (await response.json())["error"] == "validation"
+
+    response = await client.put(item_url, json={**ITEM, "person": "Sam"}, headers=basic())
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert (await response.json())["error"] == "person_mismatch"
+
+    response = await client.put(
+        item_url, json={**ITEM, "id": "0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10"}, headers=basic()
+    )
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert (await response.json())["error"] == "id_mismatch"
+
+    response = await client.put(item_url, json=[ITEM], headers=basic())
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert (await response.json())["error"] == "expected_an_item"
+
+
+async def test_every_method_needs_credentials(hass_client_no_auth, entry):
+    client = await hass_client_no_auth()
+    item_url = f"{URL}/0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10"
+    for response in [
+        await client.get(URL),
+        await client.get(item_url),
+        await client.put(item_url, json=ITEM),
+        await client.delete(item_url),
+    ]:
+        assert response.status == HTTPStatus.UNAUTHORIZED
+
+
 async def call(hass, domain, service, **data):
     await hass.services.async_call(domain, service, data, blocking=True)
 
@@ -284,7 +447,7 @@ async def test_the_services_add_update_and_delete(hass, entry):
     await call(hass, DOMAIN, "update_item", id=record["id"], **{**fields, "kcal": 400}, created_at="2026-08-31T13:00")
     assert coordinator.store.read_month("david", 2026, 9) == []
     [moved] = coordinator.store.read_month("david", 2026, 8)
-    assert (moved["id"], moved["kcal"], moved["received_at"]) == (record["id"], 400.0, record["received_at"])
+    assert (moved["id"], moved["kcal"]) == (record["id"], 400.0)
 
     await call(hass, DOMAIN, "delete_item", id=record["id"])
     assert coordinator.store.read_month("david", 2026, 8) == []
