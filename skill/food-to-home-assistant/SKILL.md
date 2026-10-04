@@ -1,11 +1,11 @@
 ---
 name: food-to-home-assistant
-description: Analyse a photo of a meal (identify each food, estimate portion, calories, protein, carbohydrate, fat) and send the food list plus the analysis to the Meal Recorder integration in the user's Home Assistant as a food diary entry. Use this skill whenever the user shares a photo of food, a plate, a meal or a snack, or asks "how many calories", "log this meal", "track this", or "send to Home Assistant", even if they don't mention Home Assistant explicitly.
+description: Analyse a photo of a meal (identify each food, estimate portion, calories, protein, carbohydrate, fat) and send the food list plus the analysis to the Meal Recorder integration in the user's Home Assistant as a food diary entry; also read back, correct and delete entries already stored there. Use this skill whenever the user shares a photo of food, a plate, a meal or a snack, or asks "how many calories", "log this meal", "track this", "send to Home Assistant", "what have I eaten today", "how many calories so far", "change that entry" or "delete that meal", even if they don't mention Home Assistant explicitly.
 ---
 
 # Food photo → Home Assistant
 
-The user takes a photo of what they're eating. You work out what's on the plate and its nutrition, check it with them, then send it to their Home Assistant so it can be logged and totalled there.
+The user takes a photo of what they're eating. You work out what's on the plate and its nutrition, check it with them, then send it to their Home Assistant so it can be logged and totalled there. Entries already stored can be listed, corrected and deleted as well (step 5), so a wrong entry is fixed rather than sent again.
 
 ## User preferences
 
@@ -79,7 +79,7 @@ Once confirmed, write a meal file and run the send script:
 - `person` (optional): only if the user says the meal is someone else's. Omitted means the `person` in `config.json`, the user's own name. Every item is sent with a person; Home Assistant refuses items without one.
 
 ```bash
-python /path/to/skill/scripts/send_to_ha.py meal.json
+python /path/to/skill/scripts/send_to_ha.py send meal.json
 ```
 
 The script gives each item an id and saves it into the meal file before sending. `--dry-run` checks the file and prints what would be sent without sending. The script reads the Home Assistant address, username, password and the user's name (`person`) from `config.json` in the skill folder.
@@ -96,11 +96,29 @@ Report what the script printed, plainly. By cause:
 - **409 with `unknown_person`:** the person hasn't been added in the integration's Configure dialog.
 - **400:** the details say which item and field; fix it and send again (nothing was stored).
 - **"could not connect":** nothing was stored; check the address and that Home Assistant is up.
-- **"did not reply in time":** the meal may have been stored. Sending the same meal file again is safe: the script saved an id for each item in it, and Home Assistant refuses ids it already has (409 `duplicate_id`, meaning it was stored the first time). Never write a new meal file for a resend, because new ids would store it twice.
+- **"did not reply in time":** the meal may have been stored. Check with `get <id>`, using an id the script printed, before doing anything else. Sending the same meal file again is also safe: the script saved an id for each item in it, and Home Assistant refuses ids it already has (409 `duplicate_id`, meaning it was stored the first time). Never write a new meal file for a resend, because new ids would store it twice.
 - **config.json placeholders:** ask the user for their Home Assistant address, the integration's username and password, and their name as added in the integration.
 
 Still show the user the analysis even if sending fails, so the work isn't lost.
 
-## Step 5: Confirm
+## Step 5: Reading, correcting and deleting stored items
+
+The endpoint is a REST endpoint, so items already stored can be read, replaced and deleted. The same script does it:
+
+```bash
+python scripts/send_to_ha.py list                             # the user, today
+python scripts/send_to_ha.py list --person David --date 2026-09-24
+python scripts/send_to_ha.py list --month 2026-09
+python scripts/send_to_ha.py get <id>
+python scripts/send_to_ha.py update <id> fixed.json
+python scripts/send_to_ha.py delete <id>
+```
+
+- `list` and `get` answer questions about what was eaten ("what have I had today", "how many calories so far", "what did I log yesterday"). `list` prints one line per item ending in its id, and a total. It lists one person at a time: without `--person` it lists the user, and another person's items need `--person NAME`.
+- `update` takes a meal file holding **exactly one item**, in the same shape as a meal file for sending, and replaces every field of the stored item. The item keeps its id and its person, so don't put them in the file. Changing `created_at` moves the item to another day or month.
+- To correct one item of a meal already sent, get its id from `list`, write a one-item meal file with the corrected numbers, and `update`. Don't send the meal again: that stores it twice.
+- `delete` removes one item. Ask the user before deleting anything, unless they named the item to delete.
+
+## Step 6: Confirm
 
 After a successful send, one short line: how many items were stored and the total kcal.

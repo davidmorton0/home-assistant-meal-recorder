@@ -146,3 +146,42 @@ def test_get_item_finds_it_by_id(store):
     store.append_items([stored])
     assert store.get_item("david", stored["id"])["name"] == "Porridge"
     assert store.get_item("david", str(uuid.uuid4())) is None
+
+
+def test_times_are_written_as_local_without_an_offset(tmp_path):
+    """The format in the file: the clock reading, to the second, no offset."""
+    from custom_components.meal_recorder.const import CSV_COLUMNS
+    from custom_components.meal_recorder.items import local_time
+
+    store = CsvStore(tmp_path)
+    stored = {
+        **item("2026-09-24T08:15:00"),
+        "created_at": local_time(datetime(2026, 9, 24, 8, 15, tzinfo=TZ), TZ),
+        "received_at": local_time(datetime(2026, 9, 24, 8, 16, 3, 123456, tzinfo=TZ), TZ),
+    }
+    store.append_items([stored])
+
+    text = (tmp_path / "david" / "09_2026.csv").read_text(encoding="utf-8")
+    assert text.startswith(",".join(CSV_COLUMNS))
+    assert "2026-09-24T08:15:00,2026-09-24T08:16:03," in text
+
+
+def test_an_offset_in_an_older_file_is_dropped_when_read(tmp_path):
+    """Rows written by earlier versions keep their clock reading and mix in."""
+    from custom_components.meal_recorder.const import CSV_COLUMNS
+
+    folder = tmp_path / "david"
+    folder.mkdir(parents=True)
+    (folder / "09_2026.csv").write_text(
+        ",".join(CSV_COLUMNS) + "\n"
+        "0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10,2026-09-24T07:00:00+01:00,"
+        "2026-09-24T07:00:00+01:00,Old row,breakfast,1 bowl,100,100,1,1,1\n"
+        "1c7f4d2e-9b3e-4a2f-8d4c-6e8b3f5a7b21,2026-09-24T08:15:00,"
+        "2026-09-24T08:15:00,New row,breakfast,1 bowl,100,100,1,1,1\n",
+        encoding="utf-8",
+    )
+
+    records = CsvStore(tmp_path).read_month("david", 2026, 9)
+    assert [record["name"] for record in records] == ["Old row", "New row"]
+    assert [record["created_at"].tzinfo for record in records] == [None, None]
+    assert records[0]["created_at"] == datetime(2026, 9, 24, 7, 0)

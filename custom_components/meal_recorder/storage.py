@@ -2,6 +2,11 @@
 
 Pure file handling. Every call here is blocking and is run in an executor by
 the Home Assistant side of the integration.
+
+Times are written as the local clock reading, with no UTC offset, so a file
+holds one kind of timestamp whether the integration or a person wrote the row.
+Files written by earlier versions carry an offset; it is dropped as they are
+read, which keeps the clock reading they were written with.
 """
 
 from __future__ import annotations
@@ -213,12 +218,18 @@ def _format_number(value: float) -> str:
     return repr(float(value))
 
 
+def _without_offset(text: str) -> datetime:
+    """A stored timestamp, with any offset on it dropped."""
+    value = datetime.fromisoformat(text)
+    return value.replace(tzinfo=None)
+
+
 def _item_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
     try:
         record: dict[str, Any] = {
             "id": row["id"],
-            "created_at": datetime.fromisoformat(row["created_at"]),
-            "received_at": datetime.fromisoformat(row["received_at"]),
+            "created_at": _without_offset(row["created_at"]),
+            "received_at": _without_offset(row["received_at"]),
             "name": row["name"],
             "meal": row["meal"],
             "portion": row.get("portion") or "",

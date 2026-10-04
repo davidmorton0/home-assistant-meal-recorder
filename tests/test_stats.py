@@ -222,3 +222,63 @@ async def test_setup_while_starting_waits_to_write_the_statistics(hass: HomeAssi
     await hass.async_block_till_done()
     await async_wait_recording_done(hass)
     assert changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))[today] == 300.0
+
+
+FORM_FIELDS = {"name": "Porridge", "meal": "breakfast", "portion": "1 bowl",
+               "mass": 250, "protein": 10, "carbohydrate": 50, "fat": 6}
+ID1 = "0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10"
+ID2 = "1c7f4d2e-9b3e-4a2f-8d4c-6e8b3f5a7b21"
+
+
+async def form(hass: HomeAssistant, service: str, **data) -> None:
+    """Call a service as the item card's form does, then let the writes land."""
+    await hass.services.async_call(DOMAIN, service, data, blocking=True)
+    await async_wait_recording_done(hass)
+
+
+async def test_editing_through_the_form_rewrites_that_day_and_the_days_after(
+    hass: HomeAssistant, tmp_path
+):
+    """Adding, changing and deleting an item on a past day reaches the graphs."""
+    today = dt_util.now().date()
+    first, later = today - timedelta(days=10), today - timedelta(days=3)
+    await setup_with_rows(
+        hass,
+        tmp_path,
+        [(ID1, f"{first}T08:15:00+01:00", 300.0), (ID2, f"{later}T08:15:00+01:00", 200.0)],
+    )
+
+    async def kcal():
+        return changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
+
+    assert (await kcal())[first] == 300.0
+
+    await form(hass, "update_item", id=ID1, created_at=f"{first}T08:15:00", **FORM_FIELDS, kcal=500)
+    assert (await kcal())[first] == 500.0
+
+    await form(hass, "add_item", person="David", created_at=f"{later}T12:00:00",
+               **FORM_FIELDS, kcal=50)
+    assert (await kcal())[later] == 250.0
+
+    await form(hass, "delete_item", id=ID1)
+    changes = await kcal()
+    assert (changes[first], changes[later]) == (0.0, 250.0)
+    # The running totals after the edited day follow it.
+    sums = {
+        dt_util.as_local(dt_util.utc_from_timestamp(row["start"])).date(): row["sum"]
+        for row in await read_days(hass, "meal_recorder:david_kcal")
+    }
+    assert (sums[first], sums[later], sums[today]) == (0.0, 250.0, 250.0)
+
+
+async def test_moving_an_item_to_another_day_rewrites_both(hass: HomeAssistant, tmp_path):
+    """Editing the date in the form rewrites from the earlier of the two days."""
+    today = dt_util.now().date()
+    first, later = today - timedelta(days=10), today - timedelta(days=3)
+    await setup_with_rows(hass, tmp_path, [(ID1, f"{first}T08:15:00+01:00", 300.0)])
+
+    await form(hass, "update_item", id=ID1, created_at=f"{later}T19:00:00",
+               **FORM_FIELDS, kcal=300)
+
+    changes = changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
+    assert (changes[first], changes[later]) == (0.0, 300.0)

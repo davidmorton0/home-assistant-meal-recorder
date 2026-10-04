@@ -82,12 +82,11 @@ async def _add(call: ServiceCall) -> None:
 
 
 async def _update(call: ServiceCall) -> None:
-    """Replace an item's details. It keeps its id, person and received time."""
+    """Replace an item's details. It keeps its id and its person."""
     coordinator = _coordinator(call)
     try:
-        folder, record = await coordinator.async_find_item(call.data["id"])
+        folder, _ = await coordinator.async_find_item(call.data["id"])
         item = _validated({**call.data, "person": coordinator.person_name(folder)})
-        item["received_at"] = record["received_at"]
         await coordinator.async_update_item(folder, item)
     except ItemNotFound as err:
         raise ServiceValidationError(str(err)) from err

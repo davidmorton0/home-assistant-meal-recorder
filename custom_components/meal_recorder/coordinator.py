@@ -170,6 +170,30 @@ class MealRecorderCoordinator:
         await self.async_update_statistics(since)
         return [item["id"] for item in items]
 
+    async def async_list_items(
+        self, folders: list[str], start: date, end: date
+    ) -> list[dict[str, Any]]:
+        """The stored items of some people between two days, oldest first.
+
+        Each record holds the folder it was read from.
+        """
+        return await self.hass.async_add_executor_job(self._read_items, folders, start, end)
+
+    def _read_items(
+        self, folders: list[str], start: date, end: date
+    ) -> list[dict[str, Any]]:
+        found: list[dict[str, Any]] = []
+        last = end.year * 12 + end.month - 1
+        for folder in folders:
+            index = start.year * 12 + start.month - 1
+            while index <= last:
+                for record in self.store.read_month(folder, index // 12, index % 12 + 1):
+                    if start <= record["created_at"].date() <= end:
+                        found.append({**record, "folder": folder})
+                index += 1
+        found.sort(key=lambda record: record["created_at"])
+        return found
+
     async def async_find_item(self, item_id: str) -> tuple[str, dict[str, Any]]:
         """The folder and the stored record of an item. Raises ItemNotFound."""
         for folder in self.folders:
