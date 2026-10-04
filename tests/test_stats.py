@@ -10,7 +10,7 @@ pytest.importorskip("pytest_homeassistant_custom_component")
 
 pytestmark = pytest.mark.usefixtures("recorder_mock", "enable_custom_integrations")
 
-from datetime import timedelta  # noqa: E402
+from datetime import date, timedelta  # noqa: E402
 
 from homeassistant.components.recorder import get_instance  # noqa: E402
 from homeassistant.components.recorder.statistics import (  # noqa: E402
@@ -32,6 +32,14 @@ from custom_components.meal_recorder.const import (  # noqa: E402
 )
 
 HEADER = "id,created_at,received_at,name,meal,portion,mass,kcal,protein,carbohydrate,fat\n"
+
+# The clock the date-specific tests below run on, so they do not depend on the
+# day they are run. NOW is a Thursday; MONDAY starts the week before it, which
+# lies wholly inside September, and MIDWEEK is the Thursday of that week.
+NOW = "2026-09-24 12:00:00+01:00"
+TODAY = date(2026, 9, 24)
+MONDAY = date(2026, 9, 14)
+MIDWEEK = date(2026, 9, 17)
 
 
 def csv_row(item_id: str, when: str, kcal: float) -> str:
@@ -162,22 +170,23 @@ def changes_by_day(rows: list[dict]) -> dict:
     }
 
 
+@pytest.mark.freeze_time(NOW)
 async def test_showing_a_week_zeroes_a_first_day_deleted_by_hand(hass: HomeAssistant, tmp_path):
-    today = dt_util.now().date()
-    first, later = today - timedelta(days=10), today - timedelta(days=3)
     await setup_with_rows(
         hass,
         tmp_path,
-        [("a1", f"{first}T08:15:00", 300.0), ("a2", f"{later}T08:15:00", 200.0)],
+        [("a1", f"{MONDAY}T08:15:00", 300.0), ("a2", f"{MIDWEEK}T08:15:00", 200.0)],
     )
-    assert changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))[first] == 300.0
+    assert changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))[MONDAY] == 300.0
 
-    write_rows(tmp_path, [("a2", f"{later}T08:15:00", 200.0)])
-    await update_week(hass, first)
+    # The Monday's row is deleted by hand. Its month keeps a file, because the
+    # other row is in the same month; a week with no file at all is left alone.
+    write_rows(tmp_path, [("a2", f"{MIDWEEK}T08:15:00", 200.0)])
+    await update_week(hass, MONDAY)
 
     changes = changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
-    assert changes[first] == 0.0
-    assert changes[later] == 200.0
+    assert changes[MONDAY] == 0.0
+    assert changes[MIDWEEK] == 200.0
 
 
 async def test_showing_a_week_continues_the_stored_running_totals(hass: HomeAssistant, tmp_path):
@@ -236,49 +245,48 @@ async def form(hass: HomeAssistant, service: str, **data) -> None:
     await async_wait_recording_done(hass)
 
 
+@pytest.mark.freeze_time(NOW)
 async def test_editing_through_the_form_rewrites_that_day_and_the_days_after(
     hass: HomeAssistant, tmp_path
 ):
     """Adding, changing and deleting an item on a past day reaches the graphs."""
-    today = dt_util.now().date()
-    first, later = today - timedelta(days=10), today - timedelta(days=3)
     await setup_with_rows(
         hass,
         tmp_path,
-        [(ID1, f"{first}T08:15:00+01:00", 300.0), (ID2, f"{later}T08:15:00+01:00", 200.0)],
+        [(ID1, f"{MONDAY}T08:15:00", 300.0), (ID2, f"{MIDWEEK}T08:15:00", 200.0)],
     )
 
     async def kcal():
         return changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
 
-    assert (await kcal())[first] == 300.0
+    assert (await kcal())[MONDAY] == 300.0
 
-    await form(hass, "update_item", id=ID1, created_at=f"{first}T08:15:00", **FORM_FIELDS, kcal=500)
-    assert (await kcal())[first] == 500.0
+    await form(hass, "update_item", id=ID1, created_at=f"{MONDAY}T08:15:00",
+               **FORM_FIELDS, kcal=500)
+    assert (await kcal())[MONDAY] == 500.0
 
-    await form(hass, "add_item", person="David", created_at=f"{later}T12:00:00",
+    await form(hass, "add_item", person="David", created_at=f"{MIDWEEK}T12:00:00",
                **FORM_FIELDS, kcal=50)
-    assert (await kcal())[later] == 250.0
+    assert (await kcal())[MIDWEEK] == 250.0
 
     await form(hass, "delete_item", id=ID1)
     changes = await kcal()
-    assert (changes[first], changes[later]) == (0.0, 250.0)
+    assert (changes[MONDAY], changes[MIDWEEK]) == (0.0, 250.0)
     # The running totals after the edited day follow it.
     sums = {
         dt_util.as_local(dt_util.utc_from_timestamp(row["start"])).date(): row["sum"]
         for row in await read_days(hass, "meal_recorder:david_kcal")
     }
-    assert (sums[first], sums[later], sums[today]) == (0.0, 250.0, 250.0)
+    assert (sums[MONDAY], sums[MIDWEEK], sums[TODAY]) == (0.0, 250.0, 250.0)
 
 
+@pytest.mark.freeze_time(NOW)
 async def test_moving_an_item_to_another_day_rewrites_both(hass: HomeAssistant, tmp_path):
     """Editing the date in the form rewrites from the earlier of the two days."""
-    today = dt_util.now().date()
-    first, later = today - timedelta(days=10), today - timedelta(days=3)
-    await setup_with_rows(hass, tmp_path, [(ID1, f"{first}T08:15:00+01:00", 300.0)])
+    await setup_with_rows(hass, tmp_path, [(ID1, f"{MONDAY}T08:15:00", 300.0)])
 
-    await form(hass, "update_item", id=ID1, created_at=f"{later}T19:00:00",
+    await form(hass, "update_item", id=ID1, created_at=f"{MIDWEEK}T19:00:00",
                **FORM_FIELDS, kcal=300)
 
     changes = changes_by_day(await read_days(hass, "meal_recorder:david_kcal"))
-    assert (changes[first], changes[later]) == (0.0, 300.0)
+    assert (changes[MONDAY], changes[MIDWEEK]) == (0.0, 300.0)
