@@ -35,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         lambda: coordinator.store.base_dir.mkdir(parents=True, exist_ok=True)
     )
     await coordinator.async_load_view()
+    await coordinator.async_load_intakes()
     await coordinator.async_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
