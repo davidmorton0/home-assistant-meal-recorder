@@ -1,4 +1,4 @@
-"""The add, update and delete services the dashboard card calls."""
+"""The add, update and delete services the dashboard card calls, and the page's targets."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, NUTRIENTS
+from .const import DOMAIN, MAX_INTAKE, MAX_PRESET_LEN, NUTRIENTS
 from .coordinator import DuplicateId, ItemNotFound, MealRecorderCoordinator, UnknownPerson
 from .items import validate_batch
 
@@ -19,6 +19,7 @@ SERVICE_ADD = "add_item"
 SERVICE_UPDATE = "update_item"
 SERVICE_DELETE = "delete_item"
 SERVICE_UPDATE_WEEK = "update_week_statistics"
+SERVICE_SET_INTAKES = "set_intakes"
 
 _FIELDS = {
     vol.Required("created_at"): str,
@@ -31,6 +32,20 @@ ADD_SCHEMA = vol.Schema({vol.Required("person"): str, **_FIELDS})
 UPDATE_SCHEMA = vol.Schema({vol.Required("id"): str, **_FIELDS})
 DELETE_SCHEMA = vol.Schema({vol.Required("id"): str})
 UPDATE_WEEK_SCHEMA = vol.Schema({vol.Required("folder"): str, vol.Required("start"): cv.date})
+SET_INTAKES_SCHEMA = vol.Schema(
+    {
+        vol.Required("person"): str,
+        vol.Optional("preset", default="custom"): vol.All(
+            str, vol.Length(min=1, max=MAX_PRESET_LEN)
+        ),
+        **{
+            vol.Required(field): vol.All(
+                vol.Coerce(float), vol.Range(min=0, max=MAX_INTAKE, min_included=False)
+            )
+            for field in NUTRIENTS
+        },
+    }
+)
 
 
 def async_register_services(hass: HomeAssistant) -> None:
@@ -43,10 +58,15 @@ def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_UPDATE_WEEK, _update_week, schema=UPDATE_WEEK_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_INTAKES, _set_intakes, schema=SET_INTAKES_SCHEMA
+    )
 
 
 def async_remove_services(hass: HomeAssistant) -> None:
-    for service in (SERVICE_ADD, SERVICE_UPDATE, SERVICE_DELETE, SERVICE_UPDATE_WEEK):
+    for service in (
+        SERVICE_ADD, SERVICE_UPDATE, SERVICE_DELETE, SERVICE_UPDATE_WEEK, SERVICE_SET_INTAKES
+    ):
         hass.services.async_remove(DOMAIN, service)
 
 
@@ -107,5 +127,15 @@ async def _update_week(call: ServiceCall) -> None:
     coordinator = _coordinator(call)
     try:
         await coordinator.async_update_week(call.data["folder"], call.data["start"])
+    except UnknownPerson as err:
+        raise ServiceValidationError(str(err)) from err
+
+
+async def _set_intakes(call: ServiceCall) -> None:
+    """Store a person's daily intake targets."""
+    coordinator = _coordinator(call)
+    try:
+        folder = coordinator.folder_for(call.data["person"])
+        await coordinator.async_set_intakes(folder, call.data, call.data["preset"])
     except UnknownPerson as err:
         raise ServiceValidationError(str(err)) from err

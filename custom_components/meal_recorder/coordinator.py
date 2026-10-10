@@ -17,7 +17,10 @@ from homeassistant.util import dt as dt_util
 from . import aggregate, stats
 from .const import (
     CONF_PERSONS,
+    DEFAULT_INTAKE_PRESET,
+    DEFAULT_INTAKES,
     DOMAIN,
+    NUTRIENTS,
     SIGNAL_DATA_UPDATED,
     SIGNAL_PERSON_ADDED,
     SIGNAL_VIEW_UPDATED,
@@ -85,6 +88,9 @@ class MealRecorderCoordinator:
         self.view_records: list[dict[str, Any]] = []
         self.view_months: list[tuple[int, int]] = []
         self._view_store: Store = Store(hass, 1, f"{DOMAIN}.view")
+        # Each person's daily intake targets, by folder, kept across restarts.
+        self.intakes: dict[str, dict[str, Any]] = {}
+        self._intakes_store: Store = Store(hass, 1, f"{DOMAIN}.intakes")
         self._announced: set[str] = set()
         self._refreshing = False
         # Batches arriving at once are written one after another.
@@ -300,6 +306,33 @@ class MealRecorderCoordinator:
             months.append((index // 12, index % 12 + 1))
             index += 1
         return records, months[::-1]
+
+    # Intake targets ------------------------------------------------------
+
+    async def async_load_intakes(self) -> None:
+        """Restore every person's intake targets."""
+        saved = await self._intakes_store.async_load()
+        if isinstance(saved, dict):
+            self.intakes = saved
+
+    def intakes_for(self, folder: str) -> dict[str, Any]:
+        """A person's targets and the preset they came from, or the defaults."""
+        default = {"preset": DEFAULT_INTAKE_PRESET, **DEFAULT_INTAKES}
+        saved = self.intakes.get(folder) or {}
+        return {key: saved.get(key, value) for key, value in default.items()}
+
+    async def async_set_intakes(
+        self, folder: str, values: dict[str, float], preset: str
+    ) -> None:
+        """Store a person's targets and show them on the page."""
+        if folder not in self.persons:
+            raise UnknownPerson(folder)
+        self.intakes[folder] = {
+            "preset": preset,
+            **{field: values[field] for field in NUTRIENTS},
+        }
+        self._intakes_store.async_delay_save(lambda: self.intakes, 1)
+        async_dispatcher_send(self.hass, f"{SIGNAL_VIEW_UPDATED}_{self.entry.entry_id}")
 
     # Reading -------------------------------------------------------------
 

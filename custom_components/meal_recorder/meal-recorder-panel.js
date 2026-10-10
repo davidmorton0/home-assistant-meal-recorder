@@ -2,7 +2,8 @@
 // or a month, a week of kcal as bars, and the day's items (the
 // meal-recorder-card). The pickers and buttons work through the integration's
 // select and button entities; the bars come from the daily statistics the
-// integration writes, read a week at a time.
+// integration writes, read a week at a time. Each person's daily targets, drawn
+// over the bars, are set on the page and stored by the integration.
 
 import "./meal-recorder-card.js";
 
@@ -41,9 +42,23 @@ const weekStart = (date) => {
 
 // Fixed axes, so a week reads the same whatever is in it.
 const KCAL_MAX = 3000;
-// Adult reference intakes from food labels (EU Regulation 1169/2011, Annex XIII).
-const INTAKES = { kcal: 2000, protein: 50, carbohydrate: 260, fat: 70 };
 const MACRO_MAX = 400;
+
+// Daily targets to pick from. Picking one fills in the values; Save stores them.
+const PRESETS = [
+  // UK Government Dietary Recommendations, adults 19–64.
+  ["uk_adult_male", "UK adult male", { kcal: 2500, protein: 55.5, carbohydrate: 333, fat: 97 }],
+  ["uk_adult_female", "UK adult female", { kcal: 2000, protein: 45, carbohydrate: 267, fat: 78 }],
+];
+const CUSTOM = "custom";
+// Until the integration has sent a person's targets.
+const INTAKES = { kcal: 2000, protein: 50, carbohydrate: 260, fat: 70 };
+const TARGETS = [
+  ["kcal", "kcal"],
+  ["protein", "Protein (g)"],
+  ["carbohydrate", "Carb (g)"],
+  ["fat", "Fat (g)"],
+];
 
 const addDays = (date, days) => {
   const moved = new Date(date);
@@ -70,6 +85,7 @@ class MealRecorderPanel extends HTMLElement {
     this._menu.hass = hass;
     this._card.hass = hass;
     this._updatePickers();
+    this._updateTargets();
     this._updateChart();
   }
 
@@ -117,6 +133,20 @@ class MealRecorderPanel extends HTMLElement {
             <div class="chart-body macro-body"></div>
           </ha-card>
         </div>
+        <ha-card class="targets">
+          <div class="chart-title">Daily targets</div>
+          <label>Preset<select class="preset">
+            ${PRESETS.map(([key, label]) => `<option value="${key}">${label}</option>`).join("")}
+            <option value="${CUSTOM}">Custom</option>
+          </select></label>
+          <div class="values">
+            ${TARGETS.map(([field, label]) => `<label>${label}<input type="number" name="${field}" min="0" step="any" inputmode="decimal"></label>`).join("")}
+          </div>
+          <div class="save-row">
+            <span class="message"></span>
+            <button class="save">Save</button>
+          </div>
+        </ha-card>
       </div>`;
 
     this._menu = document.createElement("ha-menu-button");
@@ -127,7 +157,7 @@ class MealRecorderPanel extends HTMLElement {
     this._card.setConfig({ entity: "sensor.meals_day" });
     root.querySelector(".items").appendChild(this._card);
 
-    root.querySelectorAll("select").forEach((select) =>
+    root.querySelectorAll("select[data-entity]").forEach((select) =>
       select.addEventListener("change", () =>
         this._hass.callService("select", "select_option", { entity_id: select.dataset.entity, option: select.value })
       )
@@ -137,6 +167,19 @@ class MealRecorderPanel extends HTMLElement {
         this._hass.callService("button", "press", { entity_id: button.dataset.entity })
       )
     );
+    const preset = root.querySelector(".preset");
+    preset.addEventListener("change", () => {
+      const found = PRESETS.find(([key]) => key === preset.value);
+      if (found) TARGETS.forEach(([field]) => (this._input(field).value = found[2][field]));
+      this._setMessage("");
+    });
+    TARGETS.forEach(([field]) =>
+      this._input(field).addEventListener("input", () => {
+        preset.value = CUSTOM;
+        this._setMessage("");
+      })
+    );
+    root.querySelector(".save").addEventListener("click", () => this._saveTargets());
     root.querySelectorAll("button[data-week]").forEach((button) =>
       button.addEventListener("click", () => {
         this._offset += Number(button.dataset.week);
@@ -146,7 +189,7 @@ class MealRecorderPanel extends HTMLElement {
   }
 
   _updatePickers() {
-    this.shadowRoot.querySelectorAll("select").forEach((select) => {
+    this.shadowRoot.querySelectorAll("select[data-entity]").forEach((select) => {
       const state = this._hass.states[select.dataset.entity];
       if (!state || state === select._state) return;
       select._state = state;
@@ -159,6 +202,61 @@ class MealRecorderPanel extends HTMLElement {
       select.value = state.state;
       select.disabled = false;
     });
+  }
+
+  // Daily targets ----------------------------------------------------------
+
+  _intakes() {
+    return this._hass.states["sensor.meals_day"]?.attributes.intakes || INTAKES;
+  }
+
+  _input(field) {
+    return this.shadowRoot.querySelector(`input[name="${field}"]`);
+  }
+
+  _setMessage(text, error = false) {
+    const message = this.shadowRoot.querySelector(".message");
+    message.textContent = text;
+    message.classList.toggle("error", error);
+  }
+
+  // Fill the form from the stored targets when they or the person change, so
+  // edits not yet saved survive other updates to the page.
+  _updateTargets() {
+    const state = this._hass.states["sensor.meals_day"];
+    if (!state) return;
+    const intakes = this._intakes();
+    const key = JSON.stringify([state.attributes.folder, intakes]);
+    if (key === this._targetsKey) return;
+    this._targetsKey = key;
+    const preset = this.shadowRoot.querySelector(".preset");
+    preset.value = PRESETS.some(([name]) => name === intakes.preset) ? intakes.preset : CUSTOM;
+    TARGETS.forEach(([field]) => (this._input(field).value = intakes[field] ?? ""));
+    this._setMessage("");
+  }
+
+  async _saveTargets() {
+    const state = this._hass.states["sensor.meals_day"];
+    const person = state?.attributes.person;
+    if (!person) return;
+    const data = { person, preset: this.shadowRoot.querySelector(".preset").value };
+    for (const [field, label] of TARGETS) {
+      const value = Number(this._input(field).value);
+      if (this._input(field).value === "" || !(value > 0)) {
+        this._setMessage(`${label} must be more than 0`, true);
+        return;
+      }
+      data[field] = value;
+    }
+    const save = this.shadowRoot.querySelector(".save");
+    save.disabled = true;
+    try {
+      await this._hass.callService("meal_recorder", "set_intakes", data);
+      this._setMessage("Saved");
+    } catch (err) {
+      this._setMessage(err?.message || String(err), true);
+    }
+    save.disabled = false;
   }
 
   // The chart ------------------------------------------------------------
@@ -249,6 +347,7 @@ class MealRecorderPanel extends HTMLElement {
       week.push({ day, key: isoDate(day) });
     }
 
+    const intakes = this._intakes();
     const kcal = days.kcal || {};
     root.querySelector(".kcal-body").innerHTML = this._plot(
       week,
@@ -257,7 +356,7 @@ class MealRecorderPanel extends HTMLElement {
         const value = kcal[key] || 0;
         return `<div class="bar" style="height:${Math.min(100, (value / top) * 100)}%" title="${key}: ${value} kcal"></div>`;
       },
-      [{ value: INTAKES.kcal, cls: "t0", label: `${INTAKES.kcal} kcal` }]
+      [{ value: intakes.kcal, cls: "t0", label: `${intakes.kcal} kcal` }]
     );
 
     // One scale across the three macros, so their bars compare.
@@ -270,9 +369,9 @@ class MealRecorderPanel extends HTMLElement {
           return `<div class="bar s${index + 1}" style="height:${Math.min(100, (value / top) * 100)}%" title="${key}: ${label} ${value} g"></div>`;
         }).join(""),
       MACROS.map(([field, label], index) => ({
-        value: INTAKES[field],
+        value: intakes[field],
         cls: `t${index + 1}`,
-        label: `${label} ${INTAKES[field]}g`,
+        label: `${label} ${intakes[field]}g`,
       }))
     );
   }
@@ -294,7 +393,7 @@ class MealRecorderPanel extends HTMLElement {
         ${intakes
           .map(
             ({ value, cls, label }) =>
-              `<div class="intake ${cls}" style="bottom:${Math.min(100, (value / top) * 100)}%" title="Reference intake: ${label}"><span>${label}</span></div>`
+              `<div class="intake ${cls}" style="bottom:${Math.min(100, (value / top) * 100)}%" title="Daily target: ${label}"><span>${label}</span></div>`
           )
           .join("")}
       </div>
@@ -324,6 +423,14 @@ const STYLE = `
   label { display: flex; flex-direction: column; gap: 2px; font-size: 0.85em; color: var(--secondary-text-color); }
   select { font: inherit; font-size: 1rem; padding: 6px 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); min-width: 0; }
   .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(82px, 1fr)); gap: 6px; }
+  /* Below both columns, one column wide. */
+  .targets { padding: 16px; display: grid; gap: 12px; }
+  .values { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; }
+  input { font: inherit; font-size: 1rem; padding: 6px 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); min-width: 0; }
+  .save-row { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+  .save { padding: 8px 20px; }
+  .message { font-size: 0.85em; color: var(--secondary-text-color); }
+  .message.error { color: var(--error-color); }
   .chart { padding: 16px 16px 12px; overflow: hidden; min-width: 0; }
   .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .chart-title { font-weight: 500; }
@@ -343,14 +450,14 @@ const STYLE = `
   .s1 { background: #2a78d6; }
   .s2 { background: #eb6834; }
   .s3 { background: #199e70; }
-  /* Reference intakes: a dashed line over the bars, labelled at its right end. */
+  /* Daily targets: a dashed line over the bars, labelled at its right end. */
   .intake { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--primary-text-color); pointer-events: none; }
   .intake span { position: absolute; right: 0; bottom: 2px; font-size: 0.72em; line-height: 1; padding: 1px 3px; border-radius: 3px; background: var(--card-background-color); }
   .t0 { border-color: var(--primary-text-color); }
   .t1 { border-color: #2a78d6; }
   .t2 { border-color: #eb6834; }
   .t3 { border-color: #199e70; }
-  /* Protein (50 g) and fat (70 g) sit close together, so fat is labelled at the left. */
+  /* Protein and fat targets sit close together, so fat is labelled at the left. */
   .t3 span { right: auto; left: 0; }
   .legend { display: flex; gap: 10px; font-size: 0.8em; color: var(--secondary-text-color); }
   .key { display: inline-flex; align-items: center; gap: 4px; }
