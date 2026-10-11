@@ -41,8 +41,11 @@ const weekStart = (date) => {
 };
 
 // Fixed axes, so a week reads the same whatever is in it.
+// Each axis runs from 0 to its maximum, with a gridline every step.
 const KCAL_MAX = 3000;
+const KCAL_STEP = 500;
 const MACRO_MAX = 400;
+const MACRO_STEP = 50;
 
 // Daily targets to pick from. Picking one fills in the values; Save stores them.
 const PRESETS = [
@@ -53,11 +56,12 @@ const PRESETS = [
 const CUSTOM = "custom";
 // Until the integration has sent a person's targets.
 const INTAKES = { kcal: 2000, protein: 50, carbohydrate: 260, fat: 70 };
+// Field, label, and how much the input's arrows move it.
 const TARGETS = [
-  ["kcal", "kcal"],
-  ["protein", "Protein (g)"],
-  ["carbohydrate", "Carb (g)"],
-  ["fat", "Fat (g)"],
+  ["kcal", "kcal", 50],
+  ["protein", "Protein (g)", 5],
+  ["carbohydrate", "Carb (g)", 5],
+  ["fat", "Fat (g)", 5],
 ];
 
 const addDays = (date, days) => {
@@ -140,7 +144,7 @@ class MealRecorderPanel extends HTMLElement {
             <option value="${CUSTOM}">Custom</option>
           </select></label>
           <div class="values">
-            ${TARGETS.map(([field, label]) => `<label>${label}<input type="number" name="${field}" min="0" step="any" inputmode="decimal"></label>`).join("")}
+            ${TARGETS.map(([field, label, step]) => `<label>${label}<input type="number" name="${field}" min="0" step="${step}" inputmode="decimal"></label>`).join("")}
           </div>
           <div class="save-row">
             <span class="message"></span>
@@ -352,6 +356,7 @@ class MealRecorderPanel extends HTMLElement {
     root.querySelector(".kcal-body").innerHTML = this._plot(
       week,
       KCAL_MAX,
+      KCAL_STEP,
       ({ key }, top) => {
         const value = kcal[key] || 0;
         return `<div class="bar" style="height:${Math.min(100, (value / top) * 100)}%" title="${key}: ${value} kcal"></div>`;
@@ -363,6 +368,7 @@ class MealRecorderPanel extends HTMLElement {
     root.querySelector(".macro-body").innerHTML = this._plot(
       week,
       MACRO_MAX,
+      MACRO_STEP,
       ({ key }, top) =>
         MACROS.map(([field, label], index) => {
           const value = (days[field] || {})[key] || 0;
@@ -377,14 +383,15 @@ class MealRecorderPanel extends HTMLElement {
   }
 
   // Axis, gridlines, bars and the day labels, as one block of markup.
-  _plot(week, top, bars, intakes = []) {
-    const ticks = [0, 25, 50, 75, 100];
+  _plot(week, top, step, bars, intakes = []) {
+    const ticks = [];
+    for (let value = 0; value <= top; value += step) ticks.push({ value, at: (value / top) * 100 });
     return `
       <div class="axis">
-        ${ticks.map((at) => `<span style="bottom:${at}%">${Math.round((top * at) / 100).toLocaleString()}</span>`).join("")}
+        ${ticks.map(({ value, at }) => `<span style="bottom:${at}%">${value.toLocaleString()}</span>`).join("")}
       </div>
       <div class="plot">
-        ${ticks.map((at) => `<i style="bottom:${at}%"></i>`).join("")}
+        ${ticks.map(({ at }) => `<i style="bottom:${at}%"></i>`).join("")}
         <div class="bars">
           ${week
             .map((entry) => `<div class="col${entry.key === this._day ? " on" : ""}">${bars(entry, top)}</div>`)
