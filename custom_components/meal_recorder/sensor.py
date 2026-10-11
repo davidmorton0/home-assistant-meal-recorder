@@ -209,6 +209,8 @@ class ViewDaySensor(ViewEntity, SensorEntity):
             # The chart on the page builds this person's statistic ids from it.
             "folder": view.folder,
             "date": view.day.isoformat(),
+            # The targets the page draws on its charts, and the preset picked.
+            "intakes": self.coordinator.intakes_for(view.folder),
             "items": [
                 {
                     "id": record["id"],

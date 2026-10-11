@@ -26,6 +26,13 @@ CSV_COLUMNS = [
 MEALS = ["breakfast", "lunch", "dinner", "snack"]
 NUTRIENTS = ["kcal", "protein", "carbohydrate", "fat"]
 
+# Daily intake targets, drawn on the page's charts. A person who has not set
+# their own gets these, the values the charts have always drawn.
+DEFAULT_INTAKE_PRESET = "custom"
+DEFAULT_INTAKES = {"kcal": 2000, "protein": 50, "carbohydrate": 260, "fat": 70}
+MAX_INTAKE = 100000
+MAX_PRESET_LEN = 50
+
 # Ingest caps
 MAX_BODY_BYTES = 1024 * 1024
 MAX_ITEMS = 1000

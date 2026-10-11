@@ -151,6 +151,36 @@
           "description": "The first day of the week."
         }
       }
+    },
+    "set_intakes": {
+      "name": "Set daily targets",
+      "description": "Sets the daily intake targets drawn on a person's charts.",
+      "fields": {
+        "person": {
+          "name": "Person",
+          "description": "Whose targets they are."
+        },
+        "preset": {
+          "name": "Preset",
+          "description": "The preset the values came from, or custom."
+        },
+        "kcal": {
+          "name": "kcal",
+          "description": "Kilocalories a day."
+        },
+        "protein": {
+          "name": "Protein",
+          "description": "Grams a day."
+        },
+        "carbohydrate": {
+          "name": "Carbohydrate",
+          "description": "Grams a day."
+        },
+        "fat": {
+          "name": "Fat",
+          "description": "Grams a day."
+        }
+      }
     }
   }
 }

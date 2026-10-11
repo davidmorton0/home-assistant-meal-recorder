@@ -465,6 +465,55 @@ async def test_the_services_refuse_bad_input(hass, entry):
         await call(hass, DOMAIN, "delete_item", id="0b6f3c1e-8a2d-4f1e-9c3b-5d7a2e4f6a10")
 
 
+async def test_the_targets_start_on_the_defaults(hass, entry):
+    intakes = hass.states.get("sensor.meals_day").attributes["intakes"]
+    assert intakes == {
+        "preset": "custom", "kcal": 2000, "protein": 50, "carbohydrate": 260, "fat": 70
+    }
+
+
+async def test_the_targets_are_stored_per_person(hass, entry):
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator.async_add_person("Sam")
+    await hass.async_block_till_done()
+    await call(
+        hass, DOMAIN, "set_intakes",
+        person="David", preset="uk_adult_male", kcal=2500, protein=55.5, carbohydrate=333, fat=97,
+    )
+    intakes = hass.states.get("sensor.meals_day").attributes["intakes"]
+    assert intakes == {
+        "preset": "uk_adult_male", "kcal": 2500, "protein": 55.5, "carbohydrate": 333, "fat": 97
+    }
+
+    await call(hass, "select", "select_option", entity_id="select.meals_person", option="Sam")
+    assert hass.states.get("sensor.meals_day").attributes["intakes"]["kcal"] == 2000
+
+
+async def test_the_targets_are_kept_across_a_restart(hass, entry, hass_storage):
+    await call(hass, DOMAIN, "set_intakes", person="David", kcal=1800, protein=60, carbohydrate=200, fat=60)
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await coordinator._intakes_store.async_save(coordinator.intakes)
+    assert hass_storage[f"{DOMAIN}.intakes"]["data"]["david"]["preset"] == "custom"
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    intakes = hass.states.get("sensor.meals_day").attributes["intakes"]
+    assert (intakes["preset"], intakes["kcal"]) == ("custom", 1800)
+
+
+async def test_the_targets_refuse_bad_input(hass, entry):
+    import voluptuous as vol
+    from homeassistant.exceptions import ServiceValidationError
+
+    values = {"kcal": 2000, "protein": 50, "carbohydrate": 260, "fat": 70}
+    with pytest.raises(vol.Invalid):
+        await call(hass, DOMAIN, "set_intakes", person="David", **{**values, "fat": 0})
+    with pytest.raises(vol.Invalid):
+        await call(hass, DOMAIN, "set_intakes", person="David", **{**values, "kcal": -5})
+    with pytest.raises(ServiceValidationError, match="has not been added"):
+        await call(hass, DOMAIN, "set_intakes", person="Nobody", **values)
+
+
 async def test_the_card_script_is_served(hass, hass_client_no_auth, entry):
     client = await hass_client_no_auth()
     response = await client.get("/meal_recorder/meal-recorder-card.js")
