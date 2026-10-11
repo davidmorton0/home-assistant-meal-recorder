@@ -1,11 +1,11 @@
 ---
 name: food-to-home-assistant
-description: Analyse a photo of a meal (identify each food, estimate portion, calories, protein, carbohydrate, fat) and send the food list plus the analysis to the Meal Recorder integration in the user's Home Assistant as a food diary entry; also read back, correct and delete entries already stored there. Use this skill whenever the user shares a photo of food, a plate, a meal or a snack, or asks "how many calories", "log this meal", "track this", "send to Home Assistant", "what have I eaten today", "how many calories so far", "change that entry" or "delete that meal", even if they don't mention Home Assistant explicitly.
+description: Log food to the Meal Recorder integration in the user's Home Assistant, with calories, protein, carbohydrate and fat, from a photo, an earlier entry or a common item saved in project memory; also read back, correct and delete stored entries. Use whenever the user shares a photo of food, names something to log ("my usual porridge", "same as yesterday"), or asks what they've eaten or to change or delete an entry, even without mentioning Home Assistant.
 ---
 
 # Food photo → Home Assistant
 
-The user takes a photo of what they're eating. You work out what's on the plate and its nutrition, check it with them, then send it to their Home Assistant so it can be logged and totalled there. Entries already stored can be listed, corrected and deleted as well (step 5), so a wrong entry is fixed rather than sent again.
+The user takes a photo of what they're eating, or names something they've had before. You work out what's on the plate and its nutrition, then send it to their Home Assistant so it can be logged and totalled there. Entries already stored can be listed, corrected and deleted as well (step 5), so a wrong entry is fixed afterwards rather than held back for checking first.
 
 ## User preferences
 
@@ -19,17 +19,74 @@ The user fills these in. Use them when identifying food and estimating nutrition
 
 (shops the user buys from, to help identify products)
 
-### Common items
+### Common items and meals
 
-(e.g. usual breakfasts, usual coffee)
-
-### Names for common meals
-
-(e.g. "my usual work lunch" — what it contains)
+Stored in project memory, in the formats in "Common items" and "Common meals" below, not here.
 
 ## Step 1: Identify the food
 
-Look at the photo and list each distinct item with an estimated portion (grams or a household measure like "1 medium potato"). Use visual cues for size: plate diameter (a standard dinner plate is about 26–27 cm), cutlery, and how much of the plate each item covers.
+The food can come from three places, and one meal can mix them:
+
+- **A photo:** identify it as below.
+- **A remembered item**, something already logged ("same as yesterday's breakfast", "the curry from Tuesday"): see "Remembered items" below.
+- **A common item or meal** saved in project memory ("my usual porridge", "work lunch"): see "Common items" and "Common meals" below.
+
+Remembered and common items already have their nutrition, so skip step 2 for them.
+
+For a photo, look at the photo and list each distinct item with an estimated portion (grams or a household measure like "1 medium potato"). Use visual cues for size: plate diameter (a standard dinner plate is about 26–27 cm), cutlery, and how much of the plate each item covers.
+
+### Remembered items
+
+1. Work out the date the user means ("yesterday", "Tuesday") and run `list --date YYYY-MM-DD` (step 5). Use `--month` if they only give a rough time.
+2. Pick the items that match what they described, using the meal and the name. If several could match, ask which one.
+3. `list` only shows kcal, so run `get <id>` for each chosen item to get its `name`, `portion`, `mass`, `kcal`, `protein`, `carbohydrate` and `fat`.
+4. Copy those fields into a new meal file. Leave out `id` (the script gives new ones; reusing an old id is refused as a duplicate) and leave out `created_at` unless the user says when they ate it. Scale every number if the user says the amount differed ("half of yesterday's curry").
+
+### Common items
+
+Common items are saved in project memory, one memory entry per item, in this format:
+
+```
+Common item: Porridge
+Also called: my porridge, usual breakfast
+Name: Porridge (Tesco oats, Alpro soya milk)
+Portion: 1 bowl
+Meal: breakfast
+Variables:
+  oats = 40 g
+  milk = 200 ml
+Per 100 g or ml:
+  oats: kcal 375, protein 11, carbohydrate 60, fat 8
+  milk: kcal 39, protein 3.3, carbohydrate 2.5, fat 1.8
+```
+
+- Each variable is the amount of one ingredient, with its usual value as the default. The user can change it when logging ("porridge with 60 g oats"); otherwise use the default.
+- Each nutrient = the sum over variables of amount × per-100 value ÷ 100. `mass` = the sum of the amounts (treat 1 ml as 1 g). Round as in step 2.
+- If a variable changes the size, say so in `portion` (e.g. "1 bowl, 60 g oats").
+- An item with a fixed size has one variable for the whole item (e.g. `bar = 45 g`) with its label values per 100 g.
+- `Meal` is the usual meal; use the time of day or what the user says if it differs.
+### Common meals
+
+A common meal is a group of common items logged together. It is saved in project memory as its own entry, one entry per meal, in this format:
+
+```
+Common meal: Work lunch
+Also called: my usual lunch, office lunch
+Meal: lunch
+Items:
+  Hummus wrap
+  Apple
+  Porridge: oats = 30 g, milk = 150 ml
+```
+
+- Each line under `Items` is the `Common item` name of an entry that already exists. Save any missing item as a common item first.
+- A line can set variables for that item in this meal (`Porridge: oats = 30 g`). Variables not set use the item's defaults.
+- The same item twice means two rows; list it twice rather than doubling its variables.
+- When logging, work out each item as in "Common items" and send them all in one meal file, one row per item, with the meal from `Meal`. The user can change or drop items when logging ("work lunch without the apple"), and the saved meal stays as it is.
+
+### Saving and changing common items and meals
+
+When the user asks to save something ("remember this as my usual porridge", "save this as work lunch"), write a memory entry in the matching format: a common item from one food's ingredients, a common meal from several foods. Use label values where the user has named products. Show the entry to the user once it's saved. To change one, edit its existing entry rather than adding another.
 
 ## Step 2: Estimate nutrition per item
 
@@ -40,17 +97,11 @@ For each item estimate mass (grams), kcal, protein, carbohydrate and fat (grams)
 - Note cooking fat if relevant (about 100 kcal per tablespoon of oil or spread).
 - Round sensibly: kcal to the nearest 5, macros to whole grams. These are estimates and false precision misleads.
 
-## Step 3: Show the user and confirm
+## Step 3: Send straight away, unless the food is genuinely unclear
 
-Keep it short, since the user is usually on a phone:
+Stored items can be corrected afterwards (step 5), so for most meals go straight to step 4 and send without asking.
 
-- One line with the total kcal and a likely range.
-- A short list: item, portion, kcal.
-- One line naming the least certain item.
-
-Then ask whether anything needs correcting before it's sent. The user often knows things the photo can't show (brand, vegan swaps, how it was cooked), and a corrected entry is worth more than a fast one. If they correct something, update the numbers and show the new total.
-
-If the user has already said "just send it" or similar, skip the confirmation.
+Ask first only when there is significant uncertainty about what the food is: for example, you can't tell what an item is, or a hidden detail (a filling, a sauce, whether it's a vegan version) would change the numbers a lot. Uncertain portion sizes alone are not a reason to ask. If you do ask, keep it to one short question about the uncertain item, then send.
 
 Don't introduce terms or acronyms without defining them.
 
@@ -58,7 +109,7 @@ Don't introduce terms or acronyms without defining them.
 
 The user's Home Assistant runs the Meal Recorder integration (https://github.com/davidmorton0/home-assistant-meal-recorder), which stores each food item as a row in a monthly diary file and shows it on a Meals dashboard.
 
-Once confirmed, write a meal file and run the send script:
+Write a meal file and run the send script:
 
 ```json
 {
@@ -119,6 +170,22 @@ python scripts/send_to_ha.py delete <id>
 - To correct one item of a meal already sent, get its id from `list`, write a one-item meal file with the corrected numbers, and `update`. Don't send the meal again: that stores it twice.
 - `delete` removes one item. Ask the user before deleting anything, unless they named the item to delete.
 
-## Step 6: Confirm
+## Step 6: Show the user what was logged
 
-After a successful send, one short line: how many items were stored and the total kcal.
+After a successful send, reply in exactly this format. Keep it short, since the user is usually on a phone:
+
+```
+Logged dinner: 2 items, 750 kcal (likely 650–900)
+- Tesco vegetable quarter pounder, 2 burgers: 460 kcal
+- Jacket potato with margarine, 1 medium-large: 290 kcal
+Protein 14 g · Carbohydrate 105 g · Fat 29 g
+Least certain: margarine on the potato
+```
+
+- First line: the meal, the number of items stored and the total kcal, with a likely range in brackets.
+- One line per item: name, portion (left out if empty, with the mass in grams instead), kcal.
+- Then the total protein, carbohydrate and fat in grams.
+- Last line: the least certain item and why, in a few words. Leave out the range and this line when every item came from a common item or a remembered item, since those numbers aren't new estimates.
+- If the meal was logged for another person or another time, add it to the first line (e.g. "Logged lunch for Sam, yesterday 13:00: …").
+
+If the user then corrects something (brand, vegan swaps, how it was cooked), update the stored item as in step 5 and show the new total. Don't send the meal again.
