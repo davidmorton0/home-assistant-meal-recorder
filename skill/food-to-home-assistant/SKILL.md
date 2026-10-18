@@ -92,7 +92,10 @@ When the user asks to save something ("remember this as my usual porridge", "sav
 
 For each item estimate mass (grams), kcal, protein, carbohydrate and fat (grams).
 
-- If the user names a brand or product (e.g. "Tesco vegetable quarter pounders"), search the web for the manufacturer's label values and use them. Label values beat visual guesses, so prefer them whenever a product is named.
+- Look items up in the food tables in the skill's `foods/` folder first, all of a meal's items in one search, e.g. `grep -i -E 'porridge oats|soya' foods/*.csv`. `tesco.csv` holds Tesco products from their labels; `cofid.csv` holds generic foods and ingredients from the UK government tables; `found.csv` holds foods found by earlier web searches. All give values per 100 g; scale them to the portion. Use a row only when it is the same food.
+- If the user names a brand or product (e.g. "Tesco vegetable quarter pounders") and it isn't in `tesco.csv`, search the web for the manufacturer's label values and use them. Label values beat visual guesses, so prefer them whenever a product is named.
+- Do every lookup a meal needs at once: send all its searches as parallel tool calls in one response, not one after another.
+- After a web search finds a food's values, add a row to `foods/found.csv`: the name with its brand, kcal, protein, carbohydrate and fat per 100 g, the source URL, and today's date as `added` (YYYY-MM-DD).
 - If the user tells you about ingredient swaps (margarine instead of butter, soya milk, nutritional yeast instead of cheese, vegan versions), re-estimate those items. Swaps like these can change a dish's calories a lot, so don't just keep the old number.
 - Note cooking fat if relevant (about 100 kcal per tablespoon of oil or spread).
 - Round sensibly: kcal to the nearest 5, macros to whole grams. These are estimates and false precision misleads.
