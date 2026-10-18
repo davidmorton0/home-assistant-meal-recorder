@@ -23,6 +23,14 @@ The user fills these in. Use them when identifying food and estimating nutrition
 
 Stored in project memory, in the formats in "Common items" and "Common meals" below, not here.
 
+### Found foods sheet
+
+A Google Sheet that holds foods found by web searches (step 2). Its link is stored in project memory as `Found foods sheet: <link>`. Before the first lookup in a conversation, set it up:
+
+1. **Tools:** load the Google Drive and Google Sheets tools. If the Sheets tools are missing, ask the user once to turn on the Google Sheets connector for this project (Drive alone can't add rows), and carry on without the sheet until they do.
+2. **Link:** use the link in project memory. If there is none, search Drive for a spreadsheet titled "Found foods". If exactly one matches, use it; if several match, ask which one; if none match, create it with Drive `create_file` (`contentMimeType: application/vnd.google-apps.spreadsheet`, title "Found foods"). Save its link in project memory and tell the user, with the link.
+3. **Header:** if row 1 is empty, write `name, kcal, protein, carbohydrate, fat, source, added` into A1:G1.
+
 ## Step 1: Identify the food
 
 The food can come from three places, and one meal can mix them:
@@ -92,10 +100,11 @@ When the user asks to save something ("remember this as my usual porridge", "sav
 
 For each item estimate mass (grams), kcal, protein, carbohydrate and fat (grams).
 
-- Look items up in the food tables in the skill's `foods/` folder first, all of a meal's items in one search, e.g. `grep -i -E 'porridge oats|soya' foods/*.csv`. `tesco.csv` holds Tesco products from their labels; `cofid.csv` holds generic foods and ingredients from the UK government tables; `found.csv` holds foods found by earlier web searches. All give values per 100 g; scale them to the portion. Use a row only when it is the same food.
+- Look items up in the food tables in the skill's `foods/` folder first, all of a meal's items in one search, e.g. `grep -i -E 'porridge oats|soya' foods/*.csv`. `tesco.csv` holds Tesco products from their labels; `cofid.csv` holds generic foods and ingredients from the UK government tables. Both give values per 100 g; scale them to the portion. Use a row only when it is the same food.
 - If the user names a brand or product (e.g. "Tesco vegetable quarter pounders") and it isn't in `tesco.csv`, search the web for the manufacturer's label values and use them. Label values beat visual guesses, so prefer them whenever a product is named.
 - Do every lookup a meal needs at once: send all its searches as parallel tool calls in one response, not one after another.
-- After a web search finds a food's values, add a row to `foods/found.csv`: the name with its brand, kcal, protein, carbohydrate and fat per 100 g, the source URL, and today's date as `added` (YYYY-MM-DD).
+- In the same response as the table search, read the found foods sheet (set up as in "Found foods sheet" above) with the Google Sheets `get_values` tool, range `A:G`. It holds foods found by earlier web searches, one per row: name, kcal, protein, carbohydrate, fat (per 100 g), source, added. Search the web only for items in neither the tables nor the sheet.
+- After a web search finds a food's values, add it to the sheet: write one row with `update_values` at the first empty row (the number of rows `get_values` returned, plus one), holding the name with its brand, the four values per 100 g as numbers, the source URL, and today's date as text (`'2026-10-18`, with the apostrophe so it isn't turned into a date). Without the Sheets tools, log the meal anyway.
 - If the user tells you about ingredient swaps (margarine instead of butter, soya milk, nutritional yeast instead of cheese, vegan versions), re-estimate those items. Swaps like these can change a dish's calories a lot, so don't just keep the old number.
 - Note cooking fat if relevant (about 100 kcal per tablespoon of oil or spread).
 - Round sensibly: kcal to the nearest 5, macros to whole grams. These are estimates and false precision misleads.

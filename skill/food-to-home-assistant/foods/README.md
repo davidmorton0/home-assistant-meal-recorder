@@ -7,8 +7,6 @@ fat in grams. Meat and fish are left out. An empty value was not measured.
 |---|---|---|
 | `cofid.csv` | Generic foods and ingredients | CoFID 2021 |
 | `tesco.csv` | Tesco products sold in the UK, from their labels | Open Food Facts |
-| `found.csv` | Foods not in the other tables, added by the skill after a web search | The URL in each row |
-
 ## Sources and licences
 
 - **CoFID:** McCance and Widdowson's Composition of Foods Integrated Dataset
