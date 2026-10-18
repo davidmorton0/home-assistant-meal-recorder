@@ -25,11 +25,25 @@ Stored in project memory, in the formats in "Common items" and "Common meals" be
 
 ### Found foods sheet
 
-A Google Sheet that holds foods found by web searches (step 2). Its link is stored in project memory as `Found foods sheet: <link>`. Before the first lookup in a conversation, set it up:
+A Google Sheet titled "Found foods" that holds branded products and foods found by earlier lookups (step 2). Its link is stored in project memory as `Found foods sheet: <link>`. It has three tabs:
+
+| Tab | Columns | Holds |
+|---|---|---|
+| `Foods` | name, kcal, protein, carbohydrate, fat, source, added, count | One food per row, values per 100 g. `count` is how many times it has been logged. |
+| `Sites` | site, type, found, not found, last used, notes | Every website used for a lookup, with how often it had the values. `type` is supermarket, manufacturer or other. |
+| `Search` | A1: search terms; row 2: headers; A3: the search formula | The fast lookup: writing terms into A1 makes A3 list the matching `Foods` rows. |
+
+Before the first lookup in a conversation, set it up:
 
 1. **Tools:** load the Google Drive and Google Sheets tools. If the Sheets tools are missing, ask the user once to turn on the Google Sheets connector for this project (Drive alone can't add rows), and carry on without the sheet until they do.
 2. **Link:** use the link in project memory. If there is none, search Drive for a spreadsheet titled "Found foods". If exactly one matches, use it; if several match, ask which one; if none match, create it with Drive `create_file` (`contentMimeType: application/vnd.google-apps.spreadsheet`, title "Found foods"). Save its link in project memory and tell the user, with the link.
-3. **Header:** if row 1 is empty, write `name, kcal, protein, carbohydrate, fat, source, added` into A1:G1.
+3. **Tabs:** read the tab names with `get_spreadsheet` (`fields: ["sheets.properties"]`). Add any missing tab and write its header row as in the table. In `Search`, row 2 is `row, name, kcal, protein, carbohydrate, fat, source, added, count`, and A3 holds this formula (write it with `update_formulas`):
+
+   ```
+   =IF($A$1="","",IFERROR(ARRAY_CONSTRAIN(SORT(FILTER({ROW(Foods!A2:A),Foods!A2:H},REGEXMATCH(LOWER(Foods!A2:A),LOWER($A$1))),9,FALSE),30,9),"no match"))
+   ```
+
+   It lists up to 30 matching rows, most-logged first, with each row's number in `Foods` in the first column.
 
 ## Step 1: Identify the food
 
@@ -100,11 +114,21 @@ When the user asks to save something ("remember this as my usual porridge", "sav
 
 For each item estimate mass (grams), kcal, protein, carbohydrate and fat (grams).
 
-- Look items up in the food tables in the skill's `foods/` folder first, all of a meal's items in one search, e.g. `grep -i -E 'porridge oats|soya' foods/*.csv`. `tesco.csv` holds Tesco products from their labels; `cofid.csv` holds generic foods and ingredients from the UK government tables. Both give values per 100 g; scale them to the portion. Use a row only when it is the same food.
-- If the user names a brand or product (e.g. "Tesco vegetable quarter pounders") and it isn't in `tesco.csv`, search the web for the manufacturer's label values and use them. Label values beat visual guesses, so prefer them whenever a product is named.
-- Do every lookup a meal needs at once: send all its searches as parallel tool calls in one response, not one after another.
-- In the same response as the table search, read the found foods sheet (set up as in "Found foods sheet" above) with the Google Sheets `get_values` tool, range `A:G`. It holds foods found by earlier web searches, one per row: name, kcal, protein, carbohydrate, fat (per 100 g), source, added. Search the web only for items in neither the tables nor the sheet.
-- After a web search finds a food's values, add it to the sheet: write one row with `update_values` at the first empty row (the number of rows `get_values` returned, plus one), holding the name with its brand, the four values per 100 g as numbers, the source URL, and today's date as text (`'2026-10-18`, with the apostrophe so it isn't turned into a date). Without the Sheets tools, log the meal anyway.
+Look every item up, whether the user named it or you identified it from a photo. Sort the items into two kinds:
+
+- **Named products:** a brand or product the user named, or one you can read on the packaging in a photo ("Tesco vegetable quarter pounders").
+- **Basic items:** generic foods and ingredients (boiled potatoes, apple, rice).
+
+Then look them up in this order, all of a meal's items together at each stage, and stop for an item as soon as it is found:
+
+1. **Basic items only, `foods/cofid.csv`:** the UK government food tables, values per 100 g. Search for all basic items in one command, e.g. `grep -i -E 'potatoes, old, boiled|apples, eating' foods/cofid.csv`. Basic items not found go on to stage 2 with the named products.
+2. **The found foods sheet, `Foods` tab:** write all the items' search terms into `Search!A1` as one pattern (`update_values`, e.g. `quarter pounder|soya milk`), then read `Search!A3:I32` with `get_values`. Send the stage 1 search in the same response as the write. When several rows fit, pick the one logged most (the rows come most-logged first) unless another is clearly a closer match.
+3. **Open Food Facts:** for items still not found, run every search in one command: `python /path/to/skill/scripts/food_search.py "vegetable quarter pounders" "soya milk unsweetened" --brand tesco` (leave out `--brand` for other brands or basic items). It prints the top 5 UK matches with values per 100 g and the product URL. If it prints "BLOCKED BY SANDBOX NETWORK", tell the user once to add `search.openfoodfacts.org` to the allowed domains for code execution, and go on to stage 4.
+4. **Websites:** for items still not found, read the `Sites` tab first, then try in this order: the supermarket's site (from "Usual shops"), the manufacturer's site, then any other site that gives the label values. Prefer sites with more `found`, and skip a site whose `not found` is well above its `found`. Send the searches for all items as parallel tool calls in one response. After each site is tried, update its row in `Sites` (add 1 to `found` or `not found`, set `last used` to today) or append a new row for a new site.
+
+After stage 3 or 4 finds a food, append it to `Foods` with `append_values` (range `Foods!A1`): the name with its brand, the four values per 100 g as numbers, the source URL, today's date as text with a leading apostrophe (`'2026-10-18`, so it isn't turned into a date), and count 1. After logging an item found in the sheet, set its `count` (`Foods!H<row>`, using the row number from `Search`) to one more than before. If nothing is found at any stage, estimate the values. Without the Sheets tools, skip stage 2 and the writes, and log the meal anyway.
+
+Scale the per-100 g values to the portion. Label values beat visual guesses, so prefer a found product's values whenever a product is named.
 - If the user tells you about ingredient swaps (margarine instead of butter, soya milk, nutritional yeast instead of cheese, vegan versions), re-estimate those items. Swaps like these can change a dish's calories a lot, so don't just keep the old number.
 - Note cooking fat if relevant (about 100 kcal per tablespoon of oil or spread).
 - Round sensibly: kcal to the nearest 5, macros to whole grams. These are estimates and false precision misleads.
@@ -187,17 +211,16 @@ python scripts/send_to_ha.py delete <id>
 After a successful send, reply in exactly this format. Keep it short, since the user is usually on a phone:
 
 ```
-Logged dinner: 2 items, 750 kcal (likely 650–900)
+Logged dinner: 2 items, 750 kcal
 - Tesco vegetable quarter pounder, 2 burgers: 460 kcal
 - Jacket potato with margarine, 1 medium-large: 290 kcal
 Protein 14 g · Carbohydrate 105 g · Fat 29 g
-Least certain: margarine on the potato
 ```
 
-- First line: the meal, the number of items stored and the total kcal, with a likely range in brackets.
-- One line per item: name, portion (left out if empty, with the mass in grams instead), kcal.
+- First line: the meal, the number of items stored and the total kcal.
+- One line per item: the name as logged (the food's name from the table, sheet or site it came from), portion (left out if empty, with the mass in grams instead), kcal.
 - Then the total protein, carbohydrate and fat in grams.
-- Last line: the least certain item and why, in a few words. Leave out the range and this line when every item came from a common item or a remembered item, since those numbers aren't new estimates.
+- Only when the whole meal's kcal could be more than 20% above or below the total: add the likely range to the first line (`750 kcal (likely 550–950)`) and end with a line naming the items that make it uncertain and why, in a few words (`Uncertain: amount of margarine on the potato`). Otherwise leave both out.
 - If the meal was logged for another person or another time, add it to the first line (e.g. "Logged lunch for Sam, yesterday 13:00: …").
 
 If the user then corrects something (brand, vegan swaps, how it was cooked), update the stored item as in step 5 and show the new total. Don't send the meal again.
